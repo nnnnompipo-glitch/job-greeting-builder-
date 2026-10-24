@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>模型与个人资料 · BOSS 招呼语助手</title>
+  <link rel="stylesheet" href="settings.css">
+</head>
+<body>
+  <main>
+    <header><span class="eyebrow">BOSS 招呼语助手</span><h1>模型与个人资料</h1><p>选用你自己的模型，结合真实经历生成岗位招呼语。</p></header>
+    <output id="status" role="status" aria-live="polite">正在读取本地设置…</output>
+    <form id="settings-form">
+      <fieldset id="fields" disabled>
+        <section aria-labelledby="model-title">
+          <div class="section-heading"><span class="step">1</span><div><h2 id="model-title">选择生成模型</h2><p>保存后应用所选模型，发送仍由你手动完成。</p></div></div>
+          <label for="provider">模型来源</label>
+          <select id="provider">
+            <option value="codex">Codex · 使用已有登录</option>
+            <option value="doubao">豆包 · 火山方舟 API</option>
+            <option value="ollama">Ollama · 本地模型</option>
+            <option value="lmstudio">LM Studio · 本地模型</option>
+            <option value="openai-compatible">其他 OpenAI 兼容接口</option>
+          </select>
+          <p id="provider-help" class="help"></p>
+          <div id="http-fields" hidden>
+            <label for="base-url">接口地址（Base URL）</label>
+            <input id="base-url" type="url" spellcheck="false" placeholder="https://你的模型服务地址/v1" autocomplete="off">
+            <p class="help">填写基础地址，程序会添加 /chat/completions。</p>
+            <label for="model">模型名称或接入点 ID</label>
+            <input id="model" type="text" spellcheck="false" autocomplete="off">
+            <label for="api-key">API Key <span id="key-state" class="optional"></span></label>
+            <input id="api-key" type="password" autocomplete="new-password" spellcheck="false" placeholder="填写模型服务商提供的密钥">
+            <p id="key-help" class="help">密钥保存在本机助手配置中，页面不会回显已保存的密钥。</p>
+            <label class="check"><input id="clear-key" type="checkbox">清除这个模型已保存的密钥</label>
+            <details>
+              <summary>高级选项</summary>
+              <label for="response-format">结构化输出方式</label>
+              <select id="response-format"><option value="auto">自动兼容</option><option value="json_object">JSON 对象</option><option value="json_schema">JSON Schema</option><option value="none">普通文本（内容需为 JSON）</option></select>
+              <p class="help">一般使用“自动兼容”。模型不支持结构化参数时，可选择普通文本。</p>
+              <label for="timeout">等待时间（秒）</label>
+              <input id="timeout" type="number" min="10" max="180" step="1" value="120">
+            </details>
+          </div>
+          <p id="data-note" class="notice"></p>
+          <button id="test-model" class="secondary" type="button">测试模型连接</button>
+          <p class="help">测试仅发送简短的模拟请求，不发送你的个人资料或真实岗位。</p>
+        </section>
+        <section aria-labelledby="profile-title">
+          <div class="section-heading"><span class="step">2</span><div><h2 id="profile-title">个人经历与作品集依据</h2><p>填写专业、求职地区、项目、软件和实际成果。保留明确来源，避免写入电话、微信等联系方式。</p></div></div>
+          <label for="profile">用于生成的个人资料</label>
+          <textarea id="profile" rows="15" spellcheck="false" placeholder="例如：工业设计本科，求职地区为杭州及周边。做过哪些项目、负责哪些环节，熟悉哪些软件和工艺。"></textarea>
+          <p id="profile-note" class="help"></p>
+        </section>
+        <footer><button id="save" type="submit">保存并应用</button><button id="reload" type="button" class="secondary">重新读取</button><span>保存后回到岗位页重新检测。</span></footer>
+      </fieldset>
+    </form>
+    <button id="retry-load" class="secondary" type="button" hidden>已完成配对，重新连接</button>
+  </main>
+  <script src="settings.js"></script>
+</body>
+</html>

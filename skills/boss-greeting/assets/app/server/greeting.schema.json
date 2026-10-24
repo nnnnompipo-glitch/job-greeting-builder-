@@ -1,0 +1,21 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["greeting", "matches", "cautions"],
+  "properties": {
+    "greeting": { "type": "string" },
+    "matches": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["requirement", "evidence"],
+        "properties": {
+          "requirement": { "type": "string" },
+          "evidence": { "type": "string" }
+        }
+      }
+    },
+    "cautions": { "type": "array", "items": { "type": "string" } }
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "BOSS 招呼语助手（手动发送）",
+  "version": "1.1.0",
+  "minimum_chrome_version": "103",
+  "description": "读取当前可见岗位详情，结合本地资料生成招呼语，由你复制和发送。",
+  "permissions": ["storage"],
+  "host_permissions": ["https://www.zhipin.com/*", "http://127.0.0.1:43127/*"],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_popup": "popup.html", "default_title": "BOSS 招呼语助手" },
+  "content_scripts": [{
+    "matches": ["https://www.zhipin.com/*"],
+    "exclude_matches": ["https://www.zhipin.com/web/geek/chat*", "https://www.zhipin.com/web/chat*"],
+    "js": ["extract.js", "content.js"],
+    "run_at": "document_idle",
+    "all_frames": false
+  }]
+}

@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>BOSS 招呼语助手</title><link rel="stylesheet" href="popup.css"></head>
+<body>
+  <h1>BOSS 招呼语助手</h1>
+  <p>查看岗位 → 生成招呼语 → 你复制并发送</p>
+  <label for="token">本地服务配对码</label>
+  <input id="token" type="password" autocomplete="off" spellcheck="false" placeholder="从 private/pairing.txt 复制配对码">
+  <label class="switch"><input id="enabled" type="checkbox"> 检测前台岗位详情并自动生成</label>
+  <div class="actions"><button id="save">保存设置</button><button id="test" class="secondary">测试连接</button></div>
+  <output id="status" role="status">正在读取设置…</output>
+  <div class="actions"><button id="model-settings" class="secondary">模型与个人资料设置</button></div>
+  <p class="note">启动助手后，打开 private/pairing.txt 复制完整配对码。只读取当前前台岗位详情；可先修改招呼语，再点复制。</p>
+  <script src="popup.js"></script>
+</body>
+</html>
