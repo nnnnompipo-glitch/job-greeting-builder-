@@ -42,7 +42,7 @@ $appFiles = @(
     'extension\tests\extension.test.cjs', 'extension\tests\browser-qa.cjs', 'extension\tests\settings-qa.cjs',
     'tests\providers.test.mjs', 'tests\server.test.mjs', 'tests\settings.test.mjs'
 )
-$optionalAppFiles = @('tests\install.test.mjs', 'tests\host-config.test.mjs')
+$optionalAppFiles = @('tests\install.test.mjs', 'tests\host-config.test.mjs', 'tests\atomic-settings.test.mjs', 'tests\install-process.test.mjs')
 foreach ($relative in $appFiles) { Copy-ExportFile $appRoot $relative $appTargetRoot }
 foreach ($relative in $optionalAppFiles) {
     if (Test-Path -LiteralPath (Join-Path $appRoot $relative) -PathType Leaf) { Copy-ExportFile $appRoot $relative $appTargetRoot }

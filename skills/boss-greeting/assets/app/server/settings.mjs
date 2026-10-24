@@ -1,4 +1,4 @@
-import { readFile, writeFile, rename, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, rename, mkdir, copyFile, unlink } from 'node:fs/promises';
 import { randomUUID, createHash } from 'node:crypto';
 import path from 'node:path';
 import { normalizeModelSettings, publicModelSettings, testModelConnection } from './providers.mjs';
@@ -7,11 +7,22 @@ export function isProfileReady(profile) {
   return typeof profile === 'string' && profile.trim().length >= 80 && !profile.includes('<!-- PROFILE_NOT_CONFIGURED -->');
 }
 
-async function atomicWrite(filename, data) {
-  await mkdir(path.dirname(filename), {recursive:true});
+export async function atomicWrite(filename, data, operations = {}) {
+  const io = {mkdir, writeFile, rename, copyFile, unlink, ...operations};
+  await io.mkdir(path.dirname(filename), {recursive:true});
   const temporary = filename + '.' + randomUUID() + '.tmp';
-  await writeFile(temporary, data, {encoding:'utf8', mode:0o600});
-  await rename(temporary, filename);
+  try {
+    await io.writeFile(temporary, data, {encoding:'utf8', mode:0o600});
+    try { await io.rename(temporary, filename); }
+    catch(error) {
+      if (error.code !== 'EXDEV') throw error;
+      // Redirected filesystems can reject same-directory rename. Copy only for EXDEV.
+      await io.copyFile(temporary, filename);
+    }
+  } finally {
+    // Only this call's unique temporary file is eligible for cleanup.
+    await io.unlink(temporary).catch(()=>{});
+  }
 }
 
 export class SettingsStore {

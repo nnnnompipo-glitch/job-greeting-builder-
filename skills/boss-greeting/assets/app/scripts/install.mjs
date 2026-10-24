@@ -79,15 +79,37 @@ export async function prepareInstallation(root) {
   return {config,createdConfig,configured,profileReady:isProfileReady(await readFile(profilePath,'utf8'))};
 }
 
+export function runLauncher(executable,args,{cwd,env,timeoutMs=20000,spawnImpl=spawn}={}) {
+  return new Promise((resolve,reject)=>{
+    let child, settled=false, deadline;
+    const finish=(error,code)=>{
+      if (settled) return;
+      settled=true;
+      clearTimeout(deadline);
+      // A background service may inherit these pipes after the launcher exits.
+      child?.stdout?.destroy(); child?.stderr?.destroy();
+      if (error) reject(error); else resolve(code);
+    };
+    try {child=spawnImpl(executable,args,{cwd,shell:false,windowsHide:true,env,stdio:['ignore','pipe','pipe']});}
+    catch {finish(failure('无法启动本地服务，请检查 Windows PowerShell'));return;}
+    child.stdout?.on('data',()=>{});child.stderr?.on('data',()=>{});
+    child.once('error',()=>finish(failure('无法启动本地服务，请检查 Windows PowerShell')));
+    // close waits for every inherited pipe; exit describes the launcher itself.
+    child.once('exit',code=>finish(null,code));
+    deadline=setTimeout(()=>{
+      try {child.kill();} catch {}
+      finish(failure('本地服务启动程序超时，请检查运行状态后重试'));
+    },timeoutMs);
+  });
+}
+
 async function startWindowsService(root,{restart=false}={}) {
   if (process.platform !== 'win32') throw failure('当前常驻助手仅支持 Windows；此设备不能报告浏览器自动化安装完成');
   const executable = process.env.SystemRoot ? path.join(process.env.SystemRoot,'System32','WindowsPowerShell','v1.0','powershell.exe') : 'powershell.exe';
   async function run(script) {
-    const child=spawn(executable,['-NoProfile','-ExecutionPolicy','Bypass','-File',path.join(root,'scripts',script)],{cwd:root,shell:false,windowsHide:true,env:{...process.env,BOSS_HELPER_NODE_PATH:process.execPath},stdio:['ignore','pipe','pipe']});
-    child.stdout.on('data',()=>{});child.stderr.on('data',()=>{});
-    const deadline=setTimeout(()=>child.kill(),20000);
-    try {return await new Promise((resolve,reject)=>{child.once('error',()=>reject(failure('无法启动本地服务，请检查 Windows PowerShell')));child.once('close',resolve);});}
-    finally {clearTimeout(deadline);}
+    return runLauncher(executable,['-NoProfile','-ExecutionPolicy','Bypass','-File',path.join(root,'scripts',script)],{
+      cwd:root,env:{...process.env,BOSS_HELPER_NODE_PATH:process.execPath}
+    });
   }
   if (restart && (await exists(path.join(root,'private','server.pid')))) {
     if (await run('stop.ps1') !== 0) throw failure('无法安全停止本目录的旧服务，未停止其他实例');
