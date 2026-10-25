@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "求职招呼语助手（手动发送）",
-  "version": "1.3.1",
+  "version": "1.3.2",
   "minimum_chrome_version": "103",
   "description": "检测 BOSS、猎聘、智联当前岗位，结合个人资料和所选语气生成草稿，由你手动发送。",
   "permissions": ["storage"],
@@ -11,7 +11,7 @@
   "content_scripts": [{
     "matches": ["https://www.zhipin.com/job_detail/*", "https://www.zhipin.com/web/geek/job*", "https://www.liepin.com/job/*", "https://www.liepin.com/a/*", "https://www.zhaopin.com/jobdetail/*", "https://jobs.zhaopin.com/*"],
     "exclude_matches": ["https://www.zhipin.com/web/geek/chat*", "https://www.zhipin.com/web/chat*"],
-    "js": ["platforms.cjs", "extract.js", "content.js"],
+    "js": ["platforms.js", "extract.js", "content.js"],
     "run_at": "document_idle",
     "all_frames": false
   }]

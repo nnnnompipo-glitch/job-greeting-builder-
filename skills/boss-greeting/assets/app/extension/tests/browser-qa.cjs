@@ -110,7 +110,7 @@ async function waitFor(expression, timeout = 6000) {
         }
       } };
     })()`);
-    await evaluate(fs.readFileSync(path.join(extension, 'platforms.cjs'), 'utf8'));
+    await evaluate(fs.readFileSync(path.join(extension, 'platforms.js'), 'utf8'));
     await evaluate(fs.readFileSync(path.join(extension, 'extract.js'), 'utf8'));
     await evaluate(fs.readFileSync(path.join(extension, 'content.js'), 'utf8'));
     await waitFor('__qa.shadow?.getElementById("status").textContent.includes("检测已暂停")');

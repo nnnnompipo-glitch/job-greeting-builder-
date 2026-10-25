@@ -21,7 +21,7 @@ function element(value = '', queries = {}, options = {}) {
 function extractor() {
   const scope = { URL, getComputedStyle: () => ({ display: 'block', visibility: 'visible', opacity: '1' }) };
   vm.createContext(scope);
-  vm.runInContext(fs.readFileSync(path.join(extension, 'platforms.cjs'), 'utf8'), scope);
+  vm.runInContext(fs.readFileSync(path.join(extension, 'platforms.js'), 'utf8'), scope);
   vm.runInContext(fs.readFileSync(path.join(extension, 'extract.js'), 'utf8'), scope);
   return scope.BossJobExtractor.extract;
 }
@@ -95,7 +95,7 @@ function background({ active = true, focused = true, enabled = true, tabUrl='htt
     }
   };
   vm.createContext(scope);
-  vm.runInContext(fs.readFileSync(path.join(extension, 'platforms.cjs'), 'utf8'), scope);
+  vm.runInContext(fs.readFileSync(path.join(extension, 'platforms.js'), 'utf8'), scope);
   vm.runInContext(fs.readFileSync(path.join(extension, 'background.js'), 'utf8'), scope);
   return {
     requests,
@@ -192,14 +192,19 @@ test('monitoring enable rejects unpaired, inactive, unfocused, and malformed req
 function popup() {
   const config = { token: 'test_token_abcdefghijklmnopqrstuvwxyz', enabled: false };
   const messages = [];
+  const storageWrites = [];
   const elements = Object.fromEntries(['token', 'enabled', 'status', 'save', 'test', 'model-settings'].map(id => [id, {
     value: '', checked: false, disabled: false, textContent: '', listeners: {},
     addEventListener(type, listener) { this.listeners[type] = listener; },
     emit(type) { return this.listeners[type]({ target: this }); }
   }]));
   const scope = {
+    setTimeout, clearTimeout,
     document: { querySelector: selector => elements[selector.slice(1)] },
-    chrome: { runtime: { sendMessage: async message => {
+    chrome: { storage: { local: {
+      setAccessLevel: async () => {}, get: async () => ({...config}),
+      set: async data => { storageWrites.push(data); Object.assign(config,data); }
+    } }, runtime: { sendMessage: async message => {
       messages.push(message);
       if (message.action === 'getSettings') return { ok: true, data: { ...config, paired: true } };
       if (message.action === 'saveSettings') {
@@ -214,7 +219,7 @@ function popup() {
   };
   vm.createContext(scope);
   vm.runInContext(fs.readFileSync(path.join(extension, 'popup.js'), 'utf8'), scope);
-  return { config, messages, elements };
+  return { config, messages, elements, storageWrites };
 }
 
 test('popup checkbox saves immediately without a save-button click', async () => {
@@ -225,7 +230,7 @@ test('popup checkbox saves immediately without a save-button click', async () =>
   await runner.elements.enabled.emit('change');
   assert.equal(runner.config.enabled, true);
   assert.match(runner.elements.status.textContent, /已开启并保存/);
-  assert.equal(runner.messages.filter(message => message.action === 'saveSettings').length, 1);
+  assert.equal(runner.storageWrites.length, 1);
   runner.elements.enabled.checked = false;
   await runner.elements.enabled.emit('change');
   assert.equal(runner.config.enabled, false);

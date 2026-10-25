@@ -37,10 +37,10 @@ $appFiles = @(
     'templates\config.default.json', 'templates\profile.example.md', 'templates\node-LICENSE.txt',
     'server\core.mjs', 'server\http.mjs', 'server\index.mjs', 'server\model.mjs',
     'server\providers.mjs', 'server\imports.mjs', 'server\settings.mjs', 'server\greeting.schema.json',
-    'extension\manifest.json', 'extension\platforms.cjs', 'extension\background.js', 'extension\extract.js', 'extension\content.js',
+    'extension\manifest.json', 'extension\platforms.cjs', 'extension\platforms.js', 'extension\background.js', 'extension\extract.js', 'extension\content.js',
     'extension\popup.html', 'extension\popup.js', 'extension\popup.css',
     'extension\settings.html', 'extension\settings.js', 'extension\settings.css',
-    'extension\tests\extension.test.cjs', 'extension\tests\browser-qa.cjs', 'extension\tests\settings-qa.cjs',
+    'extension\tests\extension.test.cjs', 'extension\tests\popup.test.cjs', 'extension\tests\real-extension-qa.cjs', 'extension\tests\browser-qa.cjs', 'extension\tests\settings-qa.cjs',
     'tests\providers.test.mjs', 'tests\server.test.mjs', 'tests\settings.test.mjs', 'tests\tones.test.mjs', 'tests\imports.test.mjs', 'tests\features-http.test.mjs', 'extension\tests\platforms.test.cjs'
 )
 $optionalAppFiles = @('tests\install.test.mjs', 'tests\host-config.test.mjs', 'tests\codex.test.mjs', 'tests\stop.test.mjs', 'tests\archive-version.test.mjs', 'tests\atomic-settings.test.mjs', 'tests\install-process.test.mjs')

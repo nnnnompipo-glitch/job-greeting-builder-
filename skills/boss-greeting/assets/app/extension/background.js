@@ -1,6 +1,6 @@
 /* Local credentials stay in extension trusted contexts, never in the BOSS page. */
 const SERVER = 'http://127.0.0.1:43127';
-if (!globalThis.RecruitmentPlatforms && typeof importScripts === 'function') importScripts('platforms.cjs');
+if (!globalThis.RecruitmentPlatforms && typeof importScripts === 'function') importScripts('platforms.js');
 const platformRegistry = globalThis.RecruitmentPlatforms;
 const TONES = new Set(['professional','friendly','bold','creative']);
 let preferenceCache = {tone:'professional',token:'',expires:0};

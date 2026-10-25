@@ -13,10 +13,18 @@ function element(value='',queries={},options={}) {
 }
 function extractor() {
   const scope={URL,getComputedStyle:()=>({display:'block',visibility:'visible',opacity:'1'})};vm.createContext(scope);
-  for(const file of ['platforms.cjs','extract.js'])vm.runInContext(fs.readFileSync(path.join(extension,file),'utf8'),scope);
+  for(const file of ['platforms.js','extract.js'])vm.runInContext(fs.readFileSync(path.join(extension,file),'utf8'),scope);
   return scope.RecruitmentJobExtractor.extract;
 }
 const description='负责产品工业设计、用户调研、外观方案和三维建模，协同结构工程师进行工厂打样与量产跟进。';
+test('Chrome entry scripts use JavaScript extensions and share the Node platform registry',()=>{
+  assert.deepEqual(fs.readFileSync(path.join(extension,'platforms.js')),fs.readFileSync(path.join(extension,'platforms.cjs')));
+  const manifest=JSON.parse(fs.readFileSync(path.join(extension,'manifest.json'),'utf8'));
+  const entries=[manifest.background.service_worker,...manifest.content_scripts.flatMap(item=>item.js)];
+  for(const entry of entries){assert.match(entry,/\.js$/);assert.ok(fs.existsSync(path.join(extension,entry)));}
+  const imports=[...fs.readFileSync(path.join(extension,'background.js'),'utf8').matchAll(/importScripts\('([^']+)'\)/g)].map(match=>match[1]);
+  assert.deepEqual(imports,['platforms.js']);
+});
 test('strict shared routes recognize three platforms and canonicalize legacy Zhilian links',()=>{
   for(const [url,id] of [
     ['https://www.zhipin.com/job_detail/abc.html?securityId=test','boss'],
