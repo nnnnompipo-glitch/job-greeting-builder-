@@ -27,6 +27,11 @@ jobs:
             if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { throw "Missing runtime file: $file" }
           }
           if (-not (Test-Path -LiteralPath '../../SKILL.md' -PathType Leaf)) { throw 'Missing SKILL.md' }
+          $version = (Get-Content -LiteralPath package.json -Raw | ConvertFrom-Json).version
+          $extensionVersion = (Get-Content -LiteralPath extension/manifest.json -Raw | ConvertFrom-Json).version
+          if ($version -ne $extensionVersion) { throw 'Application and extension versions differ' }
+          $changelog = Get-Content -LiteralPath '../../../../CHANGELOG.md' -Raw -Encoding UTF8
+          if ($changelog -notmatch ('(?m)^##\s+(?:\[' + [regex]::Escape($version) + '\]|' + [regex]::Escape($version) + ')(?=\s|$)')) { throw 'Current version is missing from CHANGELOG.md' }
       - name: Check JavaScript syntax
         run: |
           Get-ChildItem -LiteralPath server,scripts -File | Where-Object { $_.Extension -eq '.mjs' } | ForEach-Object {

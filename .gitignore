@@ -2,4 +2,6 @@
 **/dist/
 **/node_modules/
 **/runtime/
+**/版本归档/
+**/versions/
 *.log

@@ -1,8 +1,10 @@
 # 求职招呼语助手 · Codex 登录版
 
+[更新日志](CHANGELOG.md) · [发布与版本归档](RELEASING.md)
+
 浏览器读取你当前打开的岗位详情，结合简历和作品集生成招呼语，由你核对、复制和发送。支持 Windows 10/11、Chrome/Edge、Node.js 22+。
 
-**1.3.0 统一使用 Codex CLI 的 ChatGPT 账号登录方式。无需填写模型地址、模型 ID 或 API Key。** 豆包等具备本地工具的 AI 可以协助安装；实际生成由本机 Codex 完成，不会复用豆包聊天登录，也不要求申请其他模型的 API Key。只有文字聊天能力的客户端可以提供指导，不能据此完成本机安装。
+**当前版本为 1.3.1，统一使用 Codex CLI 的 ChatGPT 账号登录方式。无需填写模型地址、模型 ID 或 API Key。** 豆包等具备本地工具的 AI 可以协助安装；实际生成由本机 Codex 完成，不会复用豆包聊天登录，也不要求申请其他模型的 API Key。只有文字聊天能力的客户端可以提供指导，不能据此完成本机安装。
 
 ## 对 AI 说什么
 
@@ -75,4 +77,4 @@ npx skills add https://github.com/nnnnompipo-glitch/job-greeting-builder- --skil
 node --test tests/*.test.mjs extension/tests/*.test.cjs
 ```
 
-开发目录运行 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/export-github.ps1` 可导出干净的 GitHub 源码目录与 ZIP；`scripts/package.ps1` 生成带 Node.js 的 Windows 便携包，Codex 需单独安装和登录。导出脚本本身不创建仓库或推送。界面检查脚本使用隔离 Chrome 和模拟网页，不使用日常浏览器资料。
+发布时先更新 `CHANGELOG.md`，再运行 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release.ps1`，同时生成干净源码、带 Node.js 的 Windows 便携包，以及按版本保存的本地快照和校验文件。单独导出仍可使用 `scripts/export-github.ps1`，单独打包使用 `scripts/package.ps1`。Codex 需单独安装和登录；这些脚本不创建 Git 提交或推送。界面检查脚本使用隔离 Chrome 和模拟网页，不使用日常浏览器资料。

@@ -1,5 +1,6 @@
 ﻿param(
-    [string]$OutputDirectory = ''
+    [string]$OutputDirectory = '',
+    [switch]$PassThru
 )
 $ErrorActionPreference = 'Stop'
 $appRoot = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
@@ -32,7 +33,7 @@ function Copy-ExportFile([string]$SourceRoot, [string]$Relative, [string]$Destin
 $appFiles = @(
     'package.json', '启动助手.cmd', '停止助手.cmd',
     'scripts\start.ps1', 'scripts\stop.ps1', 'scripts\bootstrap.ps1', 'scripts\install.mjs', 'scripts\configure-host.mjs', 'scripts\codex.mjs', 'scripts\import-document.ps1',
-    'scripts\package.ps1', 'scripts\export-github.ps1',
+    'scripts\package.ps1', 'scripts\export-github.ps1', 'scripts\release.ps1', 'scripts\archive-version.mjs',
     'templates\config.default.json', 'templates\profile.example.md', 'templates\node-LICENSE.txt',
     'server\core.mjs', 'server\http.mjs', 'server\index.mjs', 'server\model.mjs',
     'server\providers.mjs', 'server\imports.mjs', 'server\settings.mjs', 'server\greeting.schema.json',
@@ -42,17 +43,20 @@ $appFiles = @(
     'extension\tests\extension.test.cjs', 'extension\tests\browser-qa.cjs', 'extension\tests\settings-qa.cjs',
     'tests\providers.test.mjs', 'tests\server.test.mjs', 'tests\settings.test.mjs', 'tests\tones.test.mjs', 'tests\imports.test.mjs', 'tests\features-http.test.mjs', 'extension\tests\platforms.test.cjs'
 )
-$optionalAppFiles = @('tests\install.test.mjs', 'tests\host-config.test.mjs', 'tests\codex.test.mjs', 'tests\stop.test.mjs', 'tests\atomic-settings.test.mjs', 'tests\install-process.test.mjs')
+$optionalAppFiles = @('tests\install.test.mjs', 'tests\host-config.test.mjs', 'tests\codex.test.mjs', 'tests\stop.test.mjs', 'tests\archive-version.test.mjs', 'tests\atomic-settings.test.mjs', 'tests\install-process.test.mjs')
 foreach ($relative in $appFiles) { Copy-ExportFile $appRoot $relative $appTargetRoot }
 foreach ($relative in $optionalAppFiles) {
     if (Test-Path -LiteralPath (Join-Path $appRoot $relative) -PathType Leaf) { Copy-ExportFile $appRoot $relative $appTargetRoot }
 }
 foreach ($relative in @('SKILL.md','agents\openai.yaml','references\install.md')) { Copy-ExportFile $skillTemplateRoot $relative $skillTargetRoot }
 Copy-ExportFile $repositoryTemplateRoot 'README.md' $repositoryRoot
+foreach ($relative in @('CHANGELOG.md','RELEASING.md','AGENTS.md')) { Copy-ExportFile $repositoryTemplateRoot $relative $repositoryRoot }
+Copy-ExportFile $repositoryTemplateRoot 'CHANGELOG.md' $appTargetRoot
+Copy-ExportFile $repositoryTemplateRoot 'RELEASING.md' $appTargetRoot
 Copy-ExportFile $repositoryTemplateRoot '.github\workflows\ci.yml' $repositoryRoot
 Copy-ExportFile $repositoryTemplateRoot 'README.md' $appTargetRoot '使用说明.md'
 Copy-ExportFile $appRoot '打包说明.md' $appTargetRoot
-$ignore = "**/private/`n**/dist/`n**/node_modules/`n**/runtime/`n*.log`n"
+$ignore = "**/private/`n**/dist/`n**/node_modules/`n**/runtime/`n**/版本归档/`n**/versions/`n*.log`n"
 [IO.File]::WriteAllText((Join-Path $repositoryRoot '.gitignore'),$ignore,(New-Object Text.UTF8Encoding $false))
 [IO.File]::WriteAllText((Join-Path $appTargetRoot '.gitignore'),"private/`ndist/`nnode_modules/`nruntime/`n*.log`n",(New-Object Text.UTF8Encoding $false))
 
@@ -86,7 +90,7 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 $archive = [IO.Compression.ZipFile]::OpenRead($zipPath)
 try {
     $entries = @($archive.Entries | ForEach-Object {$_.FullName.Replace('\','/')})
-    foreach ($required in @('README.md','.gitignore','.github/workflows/ci.yml','skills/boss-greeting/SKILL.md','skills/boss-greeting/assets/app/.gitignore','skills/boss-greeting/assets/app/scripts/install.mjs','skills/boss-greeting/assets/app/server/providers.mjs')) {
+    foreach ($required in @('README.md','CHANGELOG.md','RELEASING.md','.gitignore','.github/workflows/ci.yml','skills/boss-greeting/SKILL.md','skills/boss-greeting/assets/app/.gitignore','skills/boss-greeting/assets/app/scripts/install.mjs','skills/boss-greeting/assets/app/server/providers.mjs')) {
         if (-not ($entries -contains $required)) { throw ('Source ZIP is missing: ' + $required) }
     }
     if ($entries | Where-Object { $_ -match '(^|/)(private|\.git|node_modules|runtime)(/|$)' -or $_ -match '\.(exe|dll|pdf|jpg|jpeg|png|log|pem|key)$' }) { throw 'Source ZIP contains forbidden personal/binary files.' }
@@ -96,3 +100,4 @@ Write-Host ('Clean repository folder: ' + $repositoryRoot)
 Write-Host ('GitHub source ZIP: ' + $zipPath)
 Write-Host ('Source ZIP size: ' + [Math]::Round((Get-Item -LiteralPath $zipPath).Length / 1KB,2) + ' KiB')
 Write-Host 'No remote repository was created or pushed.'
+if ($PassThru) { [pscustomobject]@{repositoryRoot=$repositoryRoot;zipPath=$zipPath} }
