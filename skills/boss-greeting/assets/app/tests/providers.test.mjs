@@ -1,138 +1,162 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer } from 'node:http';
-import { once } from 'node:events';
-import { normalizeModelSettings, publicModelSettings, generateWithProvider, testModelConnection, parseProviderResponse } from '../server/providers.mjs';
+import {EventEmitter} from 'node:events';
+import {PassThrough} from 'node:stream';
+import {mkdtemp,rm} from 'node:fs/promises';
+import path from 'node:path';
+import os from 'node:os';
+import * as providers from '../server/providers.mjs';
+import {generateGreeting,codexArguments,parseCodexCapabilities,probeCodexCapabilities} from '../server/model.mjs';
+import {buildPrompt} from '../server/core.mjs';
 
-const draft = { greeting: '您好，我对工业设计岗位感兴趣，有餐厨产品设计与工厂协作经历，愿提供作品集进一步沟通。', matches: [{requirement:'餐厨产品',evidence:'测试用保鲜盒项目'}], cautions: [] };
-const job = { title: '工业设计师', company: '测试公司', description: '测试岗位，负责餐厨产品外观设计和打样。', url: 'https://www.zhipin.com/job_detail/fixture.html' };
-const profile = 'PRIVATE_PROFILE_MARKER：工业设计本科，做过保鲜盒项目。';
-function envelope(content = JSON.stringify(draft), extra = {}) {
-  return { choices: [{ message: { role: 'assistant', content }, finish_reason: 'stop', ...extra }] };
+const draft={greeting:'您好，我有餐厨产品外观与建模项目经历，希望进一步沟通。',matches:[],cautions:[]};
+const job={title:'工业设计师',company:'测试公司',description:'负责餐厨产品外观设计、三维建模及工厂打样沟通。',url:'https://www.zhipin.com/job_detail/test.html'};
+const facts='隔离测试材料：工业设计本科，有保鲜盒外观设计、建模及打样沟通经历，目标地区为杭州。';
+const ready=async()=>({ok:true,status:'ready',message:'已登录'});
+const rootHelp='Commands:\n  exec Run a task\n  features Inspect feature flags\nOptions:\n --ask-for-approval <POLICY>\n --config <CONFIG>\n';
+const execHelp='Options:\n --sandbox <MODE>\n --cd <DIR>\n --output-schema <FILE>\n --skip-git-repo-check\n --ephemeral\n --ignore-user-config\n --ignore-rules\n';
+const featureList='shell_tool stable true\napps experimental true\n';
+const fixtureCapabilities=parseCodexCapabilities(rootHelp,execHelp,featureList);
+async function fixture(run){
+  const root=await mkdtemp(path.join(os.tmpdir(),'boss-codex-transport-'));
+  try {await run(root);}finally{
+    assert.ok(path.resolve(root).startsWith(path.resolve(os.tmpdir())+path.sep)&&path.basename(root).startsWith('boss-codex-transport-'));
+    await rm(root,{recursive:true,force:true});
+  }
 }
-async function fixture(handler) {
-  const requests = [];
-  const server = createServer(async (req, res) => {
-    let text = ''; for await (const chunk of req) text += chunk.toString();
-    const request = { url: req.url, headers: req.headers, body: JSON.parse(text) };
-    requests.push(request);
-    await handler(request, res, requests.length);
+function generatorCapture(captured){
+  return (executable,args,options)=>{
+    const child=new EventEmitter();
+    Object.assign(child,{stdin:new PassThrough(),stdout:new PassThrough(),stderr:new PassThrough(),kill(){}});
+    let prompt='';child.stdin.on('data',chunk=>{prompt+=chunk.toString('utf8');});
+    child.stdin.on('finish',()=>{
+      captured.push({executable,args,options,prompt});
+      queueMicrotask(()=>{child.stdout.write(JSON.stringify(draft));child.emit('close',0);});
+    });
+    return child;
+  };
+}
+
+test('Codex is the only provider and public settings never include an API key',()=>{
+  assert.deepEqual(providers.normalizeModelSettings(),{provider:'codex',baseUrl:'',model:'',apiKey:'',responseFormat:'auto',timeoutMs:120000});
+  assert.equal(providers.normalizeModelSettings({provider:'codex',timeoutMs:180000}).timeoutMs,180000);
+  assert.deepEqual(providers.publicModelSettings(),{provider:'codex',baseUrl:'',model:'',responseFormat:'auto',timeoutMs:120000,hasApiKey:false});
+  assert.deepEqual(Object.keys(providers).sort(),['normalizeModelSettings','publicModelSettings']);
+});
+
+test('all remote and local HTTP settings are rejected without exposing supplied secrets',()=>{
+  for(const input of [
+    {provider:'doubao',apiKey:'do-not-print'}, {provider:'ollama'}, {provider:'lmstudio'}, {provider:'openai-compatible'},
+    {provider:'codex',apiKey:'do-not-print'}, {provider:'codex',baseUrl:'https://do-not-print.example/v1'},
+    {provider:'codex',model:'do-not-print'}, {provider:'codex',apiKey:1}, null, [], {timeoutMs:0}, {timeoutMs:600001}
+  ])assert.throws(()=>providers.normalizeModelSettings(input,{allowIncomplete:true}),error=>Boolean(error.publicMessage)&&!error.message.includes('do-not-print'));
+  assert.throws(()=>providers.publicModelSettings({provider:'doubao',apiKey:'do-not-print'}));
+});
+
+test('unsupported generation never resolves a binary, spawns a child or falls back to HTTP',async()=>{
+  let discovered=0,spawned=0;
+  await assert.rejects(()=>generateGreeting(job,facts,{root:'unused',model:{provider:'doubao',apiKey:'secret'}},{
+    findCodexImpl:async()=>{discovered++;return '/test/codex.exe';},spawnImpl:()=>{spawned++;}
+  }),/统一使用 Codex/);
+  assert.equal(discovered,0);assert.equal(spawned,0);
+});
+
+test('every generation checks a positive ChatGPT login and refuses missing, API-key and unknown login states',async()=>{
+  await fixture(async root=>{
+    let spawned=0,checked=0;
+    const findCodexImpl=async()=>'/test/codex.exe';
+    for(const status of ['not-logged-in','api-key-login','missing','error']){
+      await assert.rejects(()=>generateGreeting(job,facts,{root},{findCodexImpl,spawnImpl:()=>{spawned++;},checkCodexLoginImpl:async()=>{
+        checked++;return {ok:false,status,message:'需要有效 ChatGPT 登录'};
+      }}),/ChatGPT 登录/);
+    }
+    await assert.rejects(()=>generateGreeting(job,facts,{root},{findCodexImpl,spawnImpl:()=>{spawned++;},checkCodexLoginImpl:async()=>({ok:true,status:'unknown'})}),/登录不可用/);
+    assert.equal(checked,4);assert.equal(spawned,0);
+    await assert.rejects(()=>generateGreeting(job,facts,{root},{findCodexImpl:async()=>null,checkCodexLoginImpl:ready}),/找不到 Codex/);
   });
-  server.listen(0, '127.0.0.1'); await once(server, 'listening');
-  return { requests, baseUrl: `http://127.0.0.1:${server.address().port}/v1`, async close() {server.closeAllConnections(); await new Promise(resolve => server.close(resolve));} };
-}
-function json(res, data, status=200) {res.writeHead(status, {'Content-Type':'application/json'});res.end(JSON.stringify(data));}
-function settings(baseUrl, other = {}) {return {provider:'ollama',baseUrl,model:'already-installed-local-model',...other};}
-
-test('provider presets, incomplete settings and public secret removal', () => {
-  assert.equal(normalizeModelSettings({provider:'ollama',model:'local'}).baseUrl, 'http://127.0.0.1:11434/v1');
-  assert.equal(normalizeModelSettings({provider:'lmstudio',model:'local'}).baseUrl, 'http://127.0.0.1:1234/v1');
-  assert.equal(normalizeModelSettings({provider:'doubao',model:'ep-actual-id',apiKey:'secret'}).baseUrl, 'https://ark.cn-beijing.volces.com/api/v3');
-  assert.equal(normalizeModelSettings({provider:'ollama'}, {allowIncomplete:true}).model, '');
-  assert.throws(() => normalizeModelSettings({provider:'ollama'}), /模型 ID/);
-  const publicSettings = publicModelSettings({provider:'doubao',apiKey:'secret'});
-  assert.equal(publicSettings.hasApiKey, true);
-  assert.equal('apiKey' in publicSettings, false);
-  assert.equal(JSON.stringify(publicSettings).includes('secret'), false);
-  assert.equal(publicModelSettings().provider, 'codex');
-  assert.equal(normalizeModelSettings({provider:'openai-compatible',baseUrl:'http://127.0.0.1:8080/v1',model:'local'}).apiKey,'');
 });
 
-test('rejects malformed URLs and insecure public HTTP without exposing input', () => {
-  for (const baseUrl of ['https://key:secret@example.test/v1', 'https://example.test/v1?api_key=secret',
-    'https://example.test/v1#secret','file:///secret','http://example.test/v1',
-    'https://example.test/v1/chat/completions','https://example.test/v1/models']) {
-    assert.throws(() => normalizeModelSettings({provider:'ollama',baseUrl,model:'local'}), error => !error.message.includes('secret'));
+test('Codex receives the selected tone, blocked action tools and no inherited API-key override',async()=>{
+  await fixture(async root=>{
+    const variables={OPENAI_API_KEY:'isolated-test-secret',OPENAI_BASE_URL:'https://isolated.invalid',OPENAI_MODEL:'other-model',CODEX_API_KEY:'isolated-codex-secret'};
+    const previous=Object.fromEntries(Object.keys(variables).map(key=>[key,process.env[key]]));
+    Object.assign(process.env,variables);
+    const captured=[];let checked=0;
+    try{
+      for(const tone of ['professional','friendly','bold','creative']){
+        assert.deepEqual(await generateGreeting(job,facts,{root,preferences:{tone},proxyUrl:'http://127.0.0.1:10808'},{
+          findCodexImpl:async()=>'/test/native-codex.exe',
+          checkCodexLoginImpl:async input=>{checked++;assert.equal(input.codexPath,'/test/native-codex.exe');return ready();},
+          probeCapabilitiesImpl:async()=>fixtureCapabilities,
+          spawnImpl:generatorCapture(captured)
+        }),draft);
+        const sent=captured.at(-1);
+        assert.equal(sent.prompt,buildPrompt(job,facts,{tone}));
+        assert.equal(sent.executable,'/test/native-codex.exe');
+        assert.equal(sent.options.shell,false);
+        for(const key of Object.keys(variables))assert.equal(key in sent.options.env,false);
+        assert.equal(sent.options.env.HTTPS_PROXY,'http://127.0.0.1:10808');
+        assert.ok(sent.args.includes('features.shell_tool=false'));assert.ok(sent.args.includes('features.apps=false'));
+      }
+      assert.equal(checked,4);assert.equal(captured.length,4);
+    }finally{for(const[key,value]of Object.entries(previous)){if(value===undefined)delete process.env[key];else process.env[key]=value;}}
+  });
+});
+
+test('standard CLI arguments omit unsupported desktop flags and unknown feature toggles',()=>{
+  const args=codexArguments('isolated','schema',false,fixtureCapabilities);
+  for(const flag of ['--no-daemon','--strict-config','features.hooks=false','features.code_mode_host=false'])assert.equal(args.includes(flag),false);
+  for(const flag of ['--ignore-user-config','--ignore-rules','--ephemeral','--output-schema','features.shell_tool=false','features.apps=false','project_doc_max_bytes=0','web_search="disabled"'])assert.ok(args.includes(flag));
+  assert.equal(args[args.indexOf('--sandbox')+1],'read-only');
+  assert.equal(args[args.indexOf('-a')+1],'never');
+  assert.equal(args.at(-1),'-');
+  const desktop=parseCodexCapabilities(rootHelp+' --no-daemon\n',execHelp+' --strict-config\n',featureList+'hooks stable true\ncode_mode_host stable true\n');
+  const desktopArgs=codexArguments('isolated','schema',false,desktop);
+  for(const flag of ['--no-daemon','--strict-config','features.hooks=false','features.code_mode_host=false'])assert.ok(desktopArgs.includes(flag));
+  assert.equal(codexArguments('isolated','schema',true,desktop).includes('--no-daemon'),false);
+});
+
+test('unsupported CLI profiles fail closed instead of loading user configuration or enabling tools',()=>{
+  for(const flag of ['--ignore-user-config','--ignore-rules','--ephemeral','--output-schema','--sandbox']){
+    assert.throws(()=>parseCodexCapabilities(rootHelp,execHelp.replace(flag,''),featureList),/请更新 Codex/);
   }
-  assert.equal(normalizeModelSettings(settings('http://192.168.0.10:8000/v1/')).baseUrl,'http://192.168.0.10:8000/v1');
-  assert.throws(() => normalizeModelSettings({provider:'other'}));
-  assert.throws(() => normalizeModelSettings({provider:'doubao',model:'m'}), /API Key/);
+  assert.throws(()=>parseCodexCapabilities(rootHelp.replace('--ask-for-approval',''),execHelp,featureList),/请更新 Codex/);
+  assert.throws(()=>parseCodexCapabilities(rootHelp,execHelp,'apps stable true\n'),/请更新 Codex/);
 });
 
-test('local completion uses selected endpoint, JSON schema and no auth or tools', async () => {
-  const app = await fixture((_request,res) => json(res,envelope()));
-  try {
-    assert.deepEqual(await generateWithProvider(job,profile,{model:settings(app.baseUrl)}),draft);
-    const sent = app.requests[0];
-    assert.equal(sent.url,'/v1/chat/completions');
-    assert.equal(sent.headers.authorization,undefined);
-    assert.equal(sent.body.model,'already-installed-local-model');
-    assert.equal(sent.body.stream,false);
-    assert.equal(sent.body.response_format.type,'json_schema');
-    assert.equal(sent.body.response_format.json_schema.schema.type,'object');
-    assert.equal('tools' in sent.body,false);
-    assert.equal(sent.body.messages.length,2);
-    assert.ok(sent.body.messages[1].content.includes('PRIVATE_PROFILE_MARKER'));
-  } finally {await app.close();}
+test('capability probes use only bounded local metadata commands and refresh when the executable changes',async()=>{
+  const calls=[];let modified=1;
+  const spawnImpl=(_executable,args,options)=>{
+    assert.equal(options.shell,false);assert.equal(options.stdio[0],'ignore');
+    calls.push(args);
+    const child=new EventEmitter();Object.assign(child,{stdout:new PassThrough(),stderr:new PassThrough(),kill(){}});
+    queueMicrotask(()=>{
+      const text=args[0]==='--help'?rootHelp:args[0]==='exec'?execHelp:featureList;
+      child.stdout.write(text);child.emit('close',0);
+    });
+    return child;
+  };
+  const options={spawnImpl,statImpl:async()=>({mtimeMs:modified,size:123})};
+  assert.deepEqual(await probeCodexCapabilities('isolated-capability-fixture',options),fixtureCapabilities);
+  assert.deepEqual(calls,[['--help'],['exec','--help'],['features','list']]);
+  await probeCodexCapabilities('isolated-capability-fixture',options);assert.equal(calls.length,3);
+  modified=2;await probeCodexCapabilities('isolated-capability-fixture',options);assert.equal(calls.length,6);
 });
 
-test('cloud adapter authenticates and connection test sends no personal materials', async () => {
-  const app = await fixture((_request,res) => json(res,envelope()));
-  try {
-    const answer = await testModelConnection(settings(app.baseUrl.replace('/v1','/api/v3'),{provider:'doubao',apiKey:'test-key',model:'ep-test'}));
-    assert.equal(answer.ok,true);
-    const sent = app.requests[0];
-    assert.equal(sent.url,'/api/v3/chat/completions');
-    assert.equal(sent.headers.authorization,'Bearer test-key');
-    assert.equal(sent.body.response_format.type,'json_object');
-    assert.equal(JSON.stringify(sent.body).includes('PRIVATE_PROFILE_MARKER'),false);
-    assert.equal(JSON.stringify(sent.body).includes('candidate_profile'),false);
-    assert.equal(JSON.stringify(sent.body).includes(job.url),false);
-  } finally {await app.close();}
-});
-
-test('auto format retries once at the same endpoint only for explicit unsupported format', async () => {
-  const app = await fixture((_request,res,count) => count === 1
-    ? json(res,{error:{message:'response_format json_schema is not supported'}},400) : json(res,envelope()));
-  try {
-    assert.deepEqual(await generateWithProvider(job,profile,settings(app.baseUrl)),draft);
-    assert.equal(app.requests.length,2);
-    assert.ok(app.requests[0].body.response_format);
-    assert.equal('response_format' in app.requests[1].body,false);
-    assert.equal(app.requests[0].url,app.requests[1].url);
-  } finally {await app.close();}
-});
-
-test('auth, quota, general errors, and explicit format never retry or expose provider bodies', async () => {
-  for (const [status, responseFormat, message] of [
-    [401,'auto','response_format is not supported; secret-key PRIVATE_PROFILE_MARKER'],
-    [429,'auto','secret-key quota'],[500,'auto','secret-key failure'],
-    [400,'auto','model not found: secret-key'],[400,'json_schema','response_format is not supported; secret-key']
-  ]) {
-    const app = await fixture((_request,res) => json(res,{error:{message}},status));
-    try {
-      await assert.rejects(generateWithProvider(job,profile,settings(app.baseUrl,{apiKey:'secret-key',responseFormat})), error =>
-        Boolean(error.publicMessage) && !error.message.includes('secret-key') && !error.message.includes('PRIVATE_PROFILE_MARKER'));
-      assert.equal(app.requests.length,1);
-    } finally {await app.close();}
-  }
-});
-
-test('accepts fenced JSON and completed think blocks, rejects invalid, refused or truncated output', () => {
-  assert.deepEqual(parseProviderResponse(envelope('```json\n'+JSON.stringify(draft)+'\n```')),draft);
-  assert.deepEqual(parseProviderResponse(envelope('<think>内部推理</think>\n'+JSON.stringify(draft))),draft);
-  assert.deepEqual(parseProviderResponse(envelope([{type:'text',text:JSON.stringify(draft)}])),draft);
-  for (const payload of [envelope('not JSON'),envelope(''),envelope(JSON.stringify(draft),{finish_reason:'length'}),
-    envelope(JSON.stringify(draft),{message:{content:JSON.stringify(draft),tool_calls:[{id:'a'}]}}),
-    envelope(JSON.stringify(draft),{message:{content:JSON.stringify(draft),refusal:'refused'}}),
-    envelope(JSON.stringify({greeting:'x'.repeat(261),matches:[],cautions:[]}))]) assert.throws(() => parseProviderResponse(payload));
-});
-
-test('timeout includes response body reads and never retries to another service', async () => {
-  const app = await fixture((_request,res) => {res.writeHead(200,{'Content-Type':'application/json'});res.write('{');});
-  try {
-    await assert.rejects(generateWithProvider(job,profile,settings(app.baseUrl,{timeoutMs:1000})), /超时/);
-    assert.equal(app.requests.length,1);
-  } finally {await app.close();}
-});
-
-test('redirects and oversized responses are rejected without forwarding auth', async () => {
-  const app = await fixture((_request,res) => {res.writeHead(307,{Location:'http://127.0.0.1:1/steal'});res.end();});
-  try {
-    await assert.rejects(generateWithProvider(job,profile,settings(app.baseUrl,{apiKey:'secret-key'})), /无法连接/);
-    assert.equal(app.requests.length,1);
-  } finally {await app.close();}
-  const large = await fixture((_request,res) => {res.writeHead(200,{'Content-Length':'1048577'});res.end('x'.repeat(1048577));});
-  try {await assert.rejects(generateWithProvider(job,profile,settings(large.baseUrl)), /过大/);}
-  finally {await large.close();}
+test('metadata timeout and failures remain bounded, redacted and retryable',async()=>{
+  const options={statImpl:async()=>({mtimeMs:1,size:2}),timeoutMs:20};
+  let killed=0;
+  const hanging=()=>{
+    const child=new EventEmitter();Object.assign(child,{stdout:new PassThrough(),stderr:new PassThrough(),kill(){killed++;}});return child;
+  };
+  await assert.rejects(()=>probeCodexCapabilities('isolated-hanging-capability',{...options,spawnImpl:hanging}),/请更新 Codex/);
+  assert.ok(killed>=1);
+  const failing=()=>{
+    const child=hanging();queueMicrotask(()=>{child.stderr.write('PRIVATE_SECRET_MARKER');child.emit('close',1);});return child;
+  };
+  await assert.rejects(()=>probeCodexCapabilities('isolated-failing-capability',{...options,spawnImpl:failing}),error=>!error.message.includes('PRIVATE_SECRET_MARKER'));
+  const success=(_executable,args)=>{
+    const child=hanging();queueMicrotask(()=>{child.stdout.write(args[0]==='--help'?rootHelp:args[0]==='exec'?execHelp:featureList);child.emit('close',0);});return child;
+  };
+  assert.deepEqual(await probeCodexCapabilities('isolated-failing-capability',{...options,spawnImpl:success}),fixtureCapabilities);
 });

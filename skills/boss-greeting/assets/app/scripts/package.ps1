@@ -27,13 +27,13 @@ $buildId = (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + ([Guid]::NewGuid().ToStr
 $stageRoot = Join-Path $distRoot ('staging-' + $buildId)
 $packageRoot = Join-Path $stageRoot 'BOSS-Greeting-Helper'
 New-Item -ItemType Directory -Path $packageRoot -Force | Out-Null
-$zipPath = Join-Path $distRoot 'BOSS-Greeting-Helper-1.2.0-Windows.zip'
-if (Test-Path -LiteralPath $zipPath) { $zipPath = Join-Path $distRoot ('BOSS-Greeting-Helper-1.2.0-Windows-' + $buildId + '.zip') }
+$zipPath = Join-Path $distRoot 'BOSS-Greeting-Helper-1.3.0-Windows.zip'
+if (Test-Path -LiteralPath $zipPath) { $zipPath = Join-Path $distRoot ('BOSS-Greeting-Helper-1.3.0-Windows-' + $buildId + '.zip') }
 
 # Only these source paths enter the package. Never recurse through the workspace.
 $relativeFiles = @(
     '启动助手.cmd', '停止助手.cmd',
-    'scripts\start.ps1', 'scripts\stop.ps1', 'scripts\import-document.ps1',
+    'scripts\start.ps1', 'scripts\stop.ps1', 'scripts\bootstrap.ps1', 'scripts\import-document.ps1', 'scripts\install.mjs', 'scripts\configure-host.mjs', 'scripts\codex.mjs',
     'templates\config.default.json', 'templates\profile.example.md',
     'extension\manifest.json', 'extension\platforms.cjs', 'extension\background.js', 'extension\extract.js', 'extension\content.js',
     'extension\popup.html', 'extension\popup.js', 'extension\popup.css',
@@ -58,10 +58,10 @@ try {
     Copy-Item -LiteralPath $RuntimeLicensePath -Destination (Join-Path $runtimeTarget 'LICENSE.txt')
     $runtimeNotice = 'Node.js ' + $runtimeIdentity.version + ' Windows x64. License source: https://github.com/nodejs/node/blob/' + $runtimeIdentity.version + '/LICENSE'
     [IO.File]::WriteAllText((Join-Path $runtimeTarget 'SOURCE.txt'),$runtimeNotice,(New-Object Text.UTF8Encoding $false))
-    $packageMetadata = [ordered]@{name='boss-greeting-helper';version='1.2.0';private=$true;type='module';scripts=@{start='node server/index.mjs'};engines=@{node='>=22'}}
+    $packageMetadata = [ordered]@{name='boss-greeting-helper';version='1.3.0';private=$true;type='module';scripts=@{start='node server/index.mjs'};engines=@{node='>=22'}}
     [IO.File]::WriteAllText((Join-Path $packageRoot 'package.json'),($packageMetadata | ConvertTo-Json -Depth 5),(New-Object Text.UTF8Encoding $false))
     $runtimeSha = (Get-FileHash -LiteralPath (Join-Path $runtimeTarget 'node.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
-    $manifest = [ordered]@{version='1.2.0';builtAt=(Get-Date).ToUniversalTime().ToString('o');runtimeVersion=$runtimeIdentity.version;runtimeSha256=$runtimeSha;personalDataIncluded=$false;sourceFiles=$relativeFiles}
+    $manifest = [ordered]@{version='1.3.0';builtAt=(Get-Date).ToUniversalTime().ToString('o');runtimeVersion=$runtimeIdentity.version;runtimeSha256=$runtimeSha;personalDataIncluded=$false;sourceFiles=$relativeFiles}
     [IO.File]::WriteAllText((Join-Path $packageRoot 'package-manifest.json'),($manifest | ConvertTo-Json -Depth 6),(New-Object Text.UTF8Encoding $false))
     Compress-Archive -LiteralPath $packageRoot -DestinationPath $zipPath -CompressionLevel Optimal
     Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -69,7 +69,7 @@ try {
     try {
         $entries = @($archive.Entries | ForEach-Object { $_.FullName.Replace('\','/') })
         if ($entries | Where-Object { $_ -match '(^|/)(private|\.git|node_modules|tests)(/|$)' -or $_ -match '\.(pdf|jpg|jpeg|png|log|pem)$' }) { throw 'Unexpected personal, testing, or credential file in ZIP.' }
-        foreach ($required in @('runtime/node.exe','runtime/LICENSE.txt','extension/settings.html','templates/config.default.json','server/providers.mjs')) {
+        foreach ($required in @('runtime/node.exe','runtime/LICENSE.txt','extension/settings.html','templates/config.default.json','server/providers.mjs','scripts/install.mjs','scripts/codex.mjs')) {
             if (-not ($entries | Where-Object { $_ -eq ('BOSS-Greeting-Helper/' + $required) })) { throw ('Required package file missing from ZIP: ' + $required) }
         }
         Write-Host ('Package entries verified: ' + $entries.Count + '; no private directory, resumes, credentials, or logs included.')

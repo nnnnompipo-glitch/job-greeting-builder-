@@ -1,13 +1,6 @@
 param(
     [switch]$Diagnose,
-    [switch]$DetectLocal,
-    [switch]$ApplyHostEnv,
     [switch]$Start,
-    [switch]$ReplaceModel,
-    [string]$Provider = '',
-    [string]$Model = '',
-    [string]$BaseUrl = '',
-    [string]$ApiKeyEnv = '',
     [string]$InstallDir = ''
 )
 $ErrorActionPreference = 'Stop'
@@ -30,12 +23,7 @@ if (-not $nodePath) {
 }
 $installArguments = @((Join-Path $PSScriptRoot 'install.mjs'))
 if ($Diagnose) { $installArguments += '--diagnose' }
-if ($DetectLocal) { $installArguments += '--detect-local' }
-if ($ApplyHostEnv) { $installArguments += '--apply-host-env' }
 if ($Start) { $installArguments += '--start' }
-if ($ReplaceModel) { $installArguments += '--replace-model' }
-foreach ($pair in @(@('--provider',$Provider),@('--model',$Model),@('--base-url',$BaseUrl),@('--api-key-env',$ApiKeyEnv),@('--install-dir',$InstallDir))) {
-    if ($pair[1]) { $installArguments += $pair[0]; $installArguments += $pair[1] }
-}
+if ($InstallDir) { $installArguments += '--install-dir'; $installArguments += $InstallDir }
 & $nodePath @installArguments
 exit $LASTEXITCODE

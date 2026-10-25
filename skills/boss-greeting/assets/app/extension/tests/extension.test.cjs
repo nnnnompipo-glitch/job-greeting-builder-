@@ -248,40 +248,53 @@ test('only the trusted settings page can read or write model and profile setting
   for (const sender of [undefined,{tab:{id:1},frameId:0,url:job.url},{tab:{id:2},frameId:1,url:modelSender.url},
     {tab:{id:2},frameId:0,url:'https://example.com/settings.html'}]) {
     assert.equal((await runner.send({action:'getModelSettings'},sender)).ok,false);
-    assert.equal((await runner.send({action:'saveModelSettings',model:{provider:'ollama'}},sender)).ok,false);
+    assert.equal((await runner.send({action:'saveModelSettings',model:{provider:'codex'}},sender)).ok,false);
   }
   assert.equal(runner.requests.length,0);
   const result = await runner.send({action:'getModelSettings'},modelSender);
   assert.equal(result.ok,true);
-  assert.equal(result.data.model.hasApiKey,true);
+  assert.equal(result.data.model.provider,'codex');
+  assert.equal('hasApiKey' in result.data.model,false);
+  assert.equal('baseUrl' in result.data.model,false);
   assert.equal('apiKey' in result.data.model,false);
   assert.equal(result.data.profile,'真实项目资料');
   assert.equal(runner.requests[0].url,'http://127.0.0.1:43127/api/settings');
   assert.equal(runner.requests[0].options.method,'GET');
 });
 
-test('model settings save forwards allowed fields and profile then redacts credentials',async () => {
-  const runner = background({response:{model:{provider:'doubao',hasApiKey:true,apiKey:'do-not-return'},profile:'经过核对的个人项目',profileReady:true}});
-  const response = await runner.send({action:'saveModelSettings',model:{provider:'doubao',baseUrl:'https://ark.cn-beijing.volces.com/api/v3',model:'ep-test',apiKey:'new-secret',timeoutMs:120000,responseFormat:'auto',cookie:'must-not-forward'},profile:'经过核对的个人项目'},modelSender);
+test('settings save forwards only Codex settings and profile then redacts legacy credentials',async () => {
+  const runner = background({response:{model:{provider:'codex',timeoutMs:120000,hasApiKey:true,apiKey:'do-not-return'},profile:'经过核对的个人项目',profileReady:true}});
+  const response = await runner.send({action:'saveModelSettings',model:{provider:'codex',timeoutMs:120000,cookie:'must-not-forward'},profile:'经过核对的个人项目'},modelSender);
   assert.equal(response.ok,true);
   assert.equal('apiKey' in response.data.model,false);
   const request = runner.requests[0];
   assert.equal(request.options.method,'PUT');
   const body = JSON.parse(request.options.body);
-  assert.equal(body.model.apiKey,'new-secret');
+  assert.deepEqual(body.model,{provider:'codex',timeoutMs:120000});
   assert.equal('cookie' in body.model,false);
   assert.equal(body.profile,'经过核对的个人项目');
 });
 
-test('model testing sends unsaved model settings without profile and supports long local-model wait',async () => {
-  const runner = background({response:{ok:true,message:'模型连接成功'}});
-  const response = await runner.send({action:'testModelSettings',model:{provider:'ollama',model:'test-model',timeoutMs:180000},profile:'must-not-forward'},modelSender);
+test('Codex login check sends no personal profile, endpoint or key',async () => {
+  const runner = background({response:{ok:true,message:'Codex 登录可用'}});
+  const response = await runner.send({action:'testModelSettings',model:{provider:'codex'},profile:'must-not-forward'},modelSender);
   assert.equal(response.ok,true);
   const request = runner.requests[0];
   assert.equal(request.url,'http://127.0.0.1:43127/api/model/test');
   assert.equal(request.options.method,'POST');
   assert.equal('profile' in JSON.parse(request.options.body),false);
+  assert.deepEqual(JSON.parse(request.options.body).model,{provider:'codex'});
   assert.equal(request.options.signal.aborted,false);
+});
+
+test('settings and login check reject other providers or API credentials without a local request',async()=>{
+  for(const action of ['saveModelSettings','testModelSettings']) {
+    for(const model of [{provider:'doubao'},{provider:'ollama'},{provider:'codex',apiKey:'must-not-forward'},{provider:'codex',baseUrl:'https://example.com'},{provider:'codex',model:'other-model'}]) {
+      const runner=background();
+      assert.equal((await runner.send({action,model},modelSender)).ok,false);
+      assert.equal(runner.requests.length,0);
+    }
+  }
 });
 
 test('only popup can open the extension settings page; no extra permission required',async () => {

@@ -3,11 +3,8 @@ import assert from 'node:assert/strict';
 import {mkdtemp,mkdir,writeFile,readFile,rm} from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import {createServer} from 'node:http';
-import {once} from 'node:events';
 import {TONE_PRESETS,normalizePreferences,buildPrompt,JobQueue,validateJob} from '../server/core.mjs';
 import {SettingsStore} from '../server/settings.mjs';
-import {generateWithProvider} from '../server/providers.mjs';
 
 const facts='工业设计本科，做过餐厨保鲜盒外观设计、Rhino建模、KeyShot渲染、手板验证和工厂协同。目标地区为杭州及周边城市。以上为隔离测试的虚构资料。'.repeat(2);
 const job={url:'https://www.zhipin.com/job_detail/tone-fixture.html',title:'工业设计师',company:'测试企业',description:'负责保鲜盒和厨房收纳产品的外观设计、Rhino三维建模、效果图、CMF及手板验证，并与结构工程师和工厂沟通量产工艺。'};
@@ -15,7 +12,7 @@ const draft={greeting:'您好，我对工业设计岗位感兴趣，愿意结合
 async function fixture() {
   const root=await mkdtemp(path.join(os.tmpdir(),'boss-tone-settings-'));
   await mkdir(path.join(root,'private'));
-  const config={port:43127,token:'isolated-test-only',model:{provider:'doubao',model:'fixture-model',apiKey:'keep-this-test-secret'}};
+  const config={port:43127,token:'isolated-test-only',model:{provider:'codex',timeoutMs:180000}};
   await writeFile(path.join(root,'private','config.json'),JSON.stringify(config),'utf8');
   await writeFile(path.join(root,'private','profile.md'),facts,'utf8');
   return {root,store:new SettingsStore({root,config}),cleanup:async()=>{
@@ -66,7 +63,7 @@ test('each tone changes writing policy while leaving job and candidate facts unc
   assert.throws(()=>buildPrompt(job,facts,{tone:'ignore-all-rules'}));
 });
 
-test('saving only a tone preserves model secret and profile and rejects invalid updates before writes',async()=>{
+test('saving only a tone preserves Codex settings and profile and rejects invalid updates before writes',async()=>{
   const f=await fixture();
   try {
     assert.deepEqual((await f.store.get()).preferences,{tone:'professional'});
@@ -74,7 +71,7 @@ test('saving only a tone preserves model secret and profile and rejects invalid 
     const saved=await f.store.update({preferences:{tone:'creative'}});
     assert.deepEqual(saved.preferences,{tone:'creative'});assert.equal('apiKey' in saved.model,false);
     const disk=JSON.parse(await readFile(path.join(f.root,'private','config.json'),'utf8'));
-    assert.equal(disk.model.apiKey,'keep-this-test-secret');
+    assert.deepEqual(disk.model,{provider:'codex',timeoutMs:180000});
     assert.equal(await readFile(path.join(f.root,'private','profile.md'),'utf8'),facts);
     assert.notEqual(beforeContext.cacheKey,(await f.store.context()).cacheKey);
     assert.deepEqual(beforeContext.preferences,{tone:'professional'});
@@ -102,23 +99,4 @@ test('the same job regenerates once per selected tone and caches unchanged tone'
     assert.equal(new Set(ids).size,4);
     assert.deepEqual(seen,Object.keys(TONE_PRESETS));
   } finally {queue.close();await f.cleanup();}
-});
-
-test('HTTP model transport receives the selected tone without changing factual inputs',async()=>{
-  const requests=[];
-  const server=createServer(async(req,res)=>{
-    let body='';for await(const chunk of req)body+=chunk.toString('utf8');
-    requests.push(JSON.parse(body));
-    res.writeHead(200,{'Content-Type':'application/json'});
-    res.end(JSON.stringify({choices:[{finish_reason:'stop',message:{role:'assistant',content:JSON.stringify(draft)}}]}));
-  });
-  server.listen(0,'127.0.0.1');await once(server,'listening');
-  const config={model:{provider:'ollama',baseUrl:`http://127.0.0.1:${server.address().port}/v1`,model:'fixture'},preferences:{tone:'bold'}};
-  try {
-    assert.deepEqual(await generateWithProvider(job,facts,config),draft);
-    const sent=requests[0].messages.find(m=>m.role==='user').content;
-    assert.equal(sent,buildPrompt(job,facts,{tone:'bold'}));
-    await assert.rejects(()=>generateWithProvider(job,facts,{...config,preferences:{tone:'invalid'}}));
-    assert.equal(requests.length,1);
-  } finally {server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
 });

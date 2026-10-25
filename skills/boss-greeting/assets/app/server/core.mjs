@@ -142,7 +142,7 @@ export class JobQueue {
     Promise.resolve().then(() => this.generate(task.job, task.profile,task.context)).then(result => {
       task.record.result = validateResult(result); task.record.status = 'done';
     }).catch(error => {
-      task.record.status = 'error'; task.record.error = error.publicMessage || '生成失败，请检查所选模型的设置和网络后重试';
+      task.record.status = 'error'; task.record.error = error.publicMessage || '生成失败，请检查 Codex 登录和网络后重试';
     }).finally(() => { this.current = null; this.prune(); this.pump(); });
   }
   close() { this.closed = true; this.cancelPending('服务已停止'); }

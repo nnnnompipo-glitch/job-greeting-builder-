@@ -40,7 +40,7 @@ export function createHelperServer({token, queue, profileReady, settings, import
     if (!authorized(req.headers['x-boss-helper-token'], token)) { reply(401,{error:'配对码不正确，请在扩展设置里重新填写'}); return; }
     const url = new URL(req.url, `http://127.0.0.1:${port}`);
     if (req.method === 'GET' && url.pathname === '/api/health') {
-      try { reply(200,{app:'boss-greeting-helper', profileReady: await profileReady(), generator:settings?.model().provider || 'codex', version:3,
+      try { reply(200,{app:'boss-greeting-helper', profileReady: await profileReady(), generator:settings?.model().provider || 'codex', version:4,
         supportedPlatforms:['boss','liepin','zhilian'],preferences:settings?.preferences?.() || {tone:'professional'}}); }
       catch { reply(500,{error:'本地模型配置格式不正确，请检查配置文件'}); }
       return;

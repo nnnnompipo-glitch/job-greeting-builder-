@@ -18,12 +18,7 @@ foreach ($candidate in ($nodeCandidates | Select-Object -Unique)) {
     } catch {}
 }
 if (-not $nodePath) { throw 'Node.js 22+ was not found. Use the complete Windows portable package or install Node.js 22+.' }
-# Codex is optional. HTTP providers and local models do not need it installed.
-$codexCommand = Get-Command codex -ErrorAction SilentlyContinue
-$codexPath = if ($codexCommand) { $codexCommand.Source } else {
-    Get-ChildItem -Path (Join-Path $env:LOCALAPPDATA 'OpenAI\Codex\bin\*\codex.exe') -ErrorAction SilentlyContinue |
-        Sort-Object LastWriteTime -Descending | Select-Object -First 1 -ExpandProperty FullName
-}
+# Codex native executable discovery is shared with the installer and generator.
 if (Test-Path -LiteralPath $configFile) {
     $config = Get-Content -LiteralPath $configFile -Raw -Encoding UTF8 | ConvertFrom-Json
 } else {
@@ -38,7 +33,6 @@ if (Test-Path -LiteralPath $configFile) {
     $config | Add-Member -NotePropertyName token -NotePropertyValue $pairingToken -Force
 }
 if ($config.port -ne 43127 -or $config.token -notmatch '^[a-f0-9]{64}$') { throw 'Invalid local configuration. Check private/config.json without sharing its secret values.' }
-if ($codexPath) { $config | Add-Member -NotePropertyName codexPath -NotePropertyValue $codexPath -Force }
 $systemProxyUrl = ''
 try {
     $proxySettings = Get-ItemProperty -LiteralPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings'
@@ -61,7 +55,12 @@ $headers = @{'X-Boss-Helper-Token'=$config.token}
 $running = $false
 try {
     $health = Invoke-RestMethod -Uri 'http://127.0.0.1:43127/api/health' -Headers $headers -TimeoutSec 2
-    $running = $health.app -eq 'boss-greeting-helper'
+    $running = $health.app -eq 'boss-greeting-helper' -and $health.version -ge 4 -and $health.generator -eq 'codex'
+    if ($health.app -eq 'boss-greeting-helper' -and -not $running) {
+        # The stop script verifies this directory owns the PID; it refuses other copies.
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'stop.ps1')
+        if ($LASTEXITCODE -ne 0) { throw 'Could not stop the old helper owned by this directory.' }
+    }
 } catch {}
 if (-not $running) {
     $entry = Join-Path $taskRoot 'server\index.mjs'
@@ -71,7 +70,7 @@ if (-not $running) {
         Start-Sleep -Milliseconds 250
         try {
             $health = Invoke-RestMethod -Uri 'http://127.0.0.1:43127/api/health' -Headers $headers -TimeoutSec 1
-            if ($health.app -eq 'boss-greeting-helper') { $running=$true; break }
+            if ($health.app -eq 'boss-greeting-helper' -and $health.version -ge 4 -and $health.generator -eq 'codex') { $running=$true; break }
         } catch {}
         if ($service.HasExited) { break }
     }
@@ -80,5 +79,5 @@ if (-not $running) { throw 'Helper did not start. Check private/server-error.log
 Write-Host 'Helper is running at 127.0.0.1:43127.'
 Write-Host ('Pairing code file: ' + $pairingFile)
 Write-Host ('Chrome extension folder: ' + (Join-Path $taskRoot 'extension'))
-Write-Host 'Use the extension popup to open model and profile settings.'
-if (-not $health.profileReady) { Write-Host 'Add your own candidate facts in model/profile settings before generating.' }
+Write-Host 'Generation uses Codex with ChatGPT login. Check Codex login in the extension settings.'
+if (-not $health.profileReady) { Write-Host 'Add your own candidate facts in Codex/profile settings before generating.' }

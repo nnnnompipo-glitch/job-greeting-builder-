@@ -31,7 +31,7 @@ function Copy-ExportFile([string]$SourceRoot, [string]$Relative, [string]$Destin
 # The list is deliberately explicit. Never copy private/, an installed home directory or .git.
 $appFiles = @(
     'package.json', '启动助手.cmd', '停止助手.cmd',
-    'scripts\start.ps1', 'scripts\stop.ps1', 'scripts\bootstrap.ps1', 'scripts\install.mjs', 'scripts\configure-host.mjs', 'scripts\import-document.ps1',
+    'scripts\start.ps1', 'scripts\stop.ps1', 'scripts\bootstrap.ps1', 'scripts\install.mjs', 'scripts\configure-host.mjs', 'scripts\codex.mjs', 'scripts\import-document.ps1',
     'scripts\package.ps1', 'scripts\export-github.ps1',
     'templates\config.default.json', 'templates\profile.example.md', 'templates\node-LICENSE.txt',
     'server\core.mjs', 'server\http.mjs', 'server\index.mjs', 'server\model.mjs',
@@ -42,7 +42,7 @@ $appFiles = @(
     'extension\tests\extension.test.cjs', 'extension\tests\browser-qa.cjs', 'extension\tests\settings-qa.cjs',
     'tests\providers.test.mjs', 'tests\server.test.mjs', 'tests\settings.test.mjs', 'tests\tones.test.mjs', 'tests\imports.test.mjs', 'tests\features-http.test.mjs', 'extension\tests\platforms.test.cjs'
 )
-$optionalAppFiles = @('tests\install.test.mjs', 'tests\host-config.test.mjs', 'tests\atomic-settings.test.mjs', 'tests\install-process.test.mjs')
+$optionalAppFiles = @('tests\install.test.mjs', 'tests\host-config.test.mjs', 'tests\codex.test.mjs', 'tests\atomic-settings.test.mjs', 'tests\install-process.test.mjs')
 foreach ($relative in $appFiles) { Copy-ExportFile $appRoot $relative $appTargetRoot }
 foreach ($relative in $optionalAppFiles) {
     if (Test-Path -LiteralPath (Join-Path $appRoot $relative) -PathType Leaf) { Copy-ExportFile $appRoot $relative $appTargetRoot }

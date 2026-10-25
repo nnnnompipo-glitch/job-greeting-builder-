@@ -48,15 +48,15 @@ async function waitFor(expression) {
     await rpc('Network.setBlockedURLs',{urls:['http://*','https://*']});
     await rpc('Emulation.setDeviceMetricsOverride',{width:1100,height:1500,deviceScaleFactor:1,mobile:false});
     await rpc('Page.addScriptToEvaluateOnNewDocument',{source:`
-      globalThis.__qa={messages:[],saved:null,failLoad:false,data:{model:{provider:'codex',baseUrl:'',model:'',responseFormat:'auto',timeoutMs:120000,hasApiKey:false},preferences:{tone:'professional'},profile:'<!-- PROFILE_NOT_CONFIGURED -->\\n请填写真实的专业、求职城市、项目经历和技能。',profileReady:false}};
+      globalThis.__qa={messages:[],saved:null,failLoad:false,failLogin:false,data:{model:{provider:'codex',timeoutMs:180000},preferences:{tone:'professional'},profile:'<!-- PROFILE_NOT_CONFIGURED -->\\n请填写真实的专业、求职城市、项目经历和技能。',profileReady:false}};
       globalThis.chrome={runtime:{sendMessage:async message=>{
         __qa.messages.push(message);
         if(message.action==='getModelSettings')return __qa.failLoad?{ok:false,error:'请先填写配对码。'}:{ok:true,data:__qa.data};
-        if(message.action==='testModelSettings')return {ok:true,data:{ok:true,message:'模型连接成功。测试仅使用模拟请求。'}};
+        if(message.action==='testModelSettings')return {ok:true,data:__qa.failLogin?{ok:false,message:'Codex 尚未登录，请运行 codex login。'}:{ok:true,message:'Codex 登录可用。'}};
         if(message.action==='importDocument')return {ok:true,data:{id:'import-fixture',status:'done',filename:message.filename,result:{text:'工业设计本科，参与测试用收纳产品外观、三维建模和打样。',characters:32,pageCount:1,method:'utf8-text',warnings:[]}}};
         if(message.action==='saveModelSettings'){
           __qa.saved=message;
-          const model={...message.model,hasApiKey:Boolean(message.model.apiKey)};delete model.apiKey;
+          const model={...message.model};
           __qa.data={model,preferences:message.preferences,profile:message.profile,profileReady:!message.profile.includes('PROFILE_NOT_CONFIGURED')};
           return {ok:true,data:__qa.data};
         }
@@ -65,26 +65,24 @@ async function waitFor(expression) {
     `});
     await rpc('Page.navigate',{url:pathToFileURL(path.join(extension,'settings.html')).href});
     await waitFor('document.getElementById("fields")?.disabled === false');
-    assert.equal(await evaluate('document.getElementById("http-fields").hidden'),true);
+    assert.equal(await evaluate('document.querySelectorAll("#provider,#api-key,#base-url,#model,#response-format").length'),0);
+    assert.equal(await evaluate('document.getElementById("model-title").textContent'),'Codex · 使用已有登录');
+    assert.equal(await evaluate('document.getElementById("test-model").textContent'),'检查 Codex 登录');
     await evaluate('document.getElementById("settings-form").requestSubmit()');
     await waitFor('__qa.saved !== null');
     assert.equal(await evaluate('__qa.saved.profile.startsWith("<!-- PROFILE_NOT_CONFIGURED -->")'),true);
-    await evaluate('document.getElementById("provider").value="doubao";document.getElementById("provider").dispatchEvent(new Event("change"))');
-    assert.equal(await evaluate('document.getElementById("base-url").value'),'https://ark.cn-beijing.volces.com/api/v3');
-    await evaluate('document.getElementById("model").value="ep-test-only";document.getElementById("api-key").value="test-secret-only";document.getElementById("test-model").click()');
-    await waitFor('document.getElementById("status").textContent.includes("模型连接成功")');
-    assert.equal(await evaluate('"profile" in __qa.messages.find(message=>message.action === "testModelSettings")'),false);
-    await evaluate('document.getElementById("profile").value="<!-- PROFILE_NOT_CONFIGURED -->\\n工业设计本科，求职地区为杭州及周边。以下为隔离测试资料：参与保鲜盒外观、三维建模、打样与工厂协同。";document.getElementById("settings-form").requestSubmit()');
-    await waitFor('__qa.saved.model.provider === "doubao" && document.getElementById("fields").disabled === false');
-    assert.equal(await evaluate('__qa.saved.profile.includes("PROFILE_NOT_CONFIGURED")'),false);
-    assert.equal(await evaluate('document.getElementById("api-key").value'),'');
-    assert.equal(await evaluate('document.getElementById("key-state").textContent.includes("已保存")'),true);
-    await evaluate('document.getElementById("provider").value="ollama";document.getElementById("provider").dispatchEvent(new Event("change"));document.getElementById("model").value="local-test-model"');
-    assert.equal(await evaluate('document.getElementById("base-url").value'),'http://127.0.0.1:11434/v1');
-    assert.equal(await evaluate('document.getElementById("api-key").value'),'');
+    assert.deepEqual(await evaluate('__qa.saved.model'),{provider:'codex',timeoutMs:180000});
     await evaluate('document.getElementById("test-model").click()');
-    await waitFor('document.getElementById("fields").disabled === false');
-    assert.equal(await evaluate('"apiKey" in __qa.messages.filter(message=>message.action === "testModelSettings").at(-1).model'),false);
+    await waitFor('document.getElementById("status").textContent.includes("Codex 登录可用")');
+    assert.equal(await evaluate('"profile" in __qa.messages.find(message=>message.action === "testModelSettings")'),false);
+    assert.deepEqual(await evaluate('__qa.messages.find(message=>message.action === "testModelSettings").model'),{provider:'codex',timeoutMs:180000});
+    await evaluate('__qa.failLogin=true;document.getElementById("test-model").click()');
+    await waitFor('document.getElementById("status").textContent.includes("尚未登录")');
+    assert.equal(await evaluate('document.getElementById("status").dataset.kind'),'error');
+    await evaluate('__qa.failLogin=false');
+    await evaluate('document.getElementById("profile").value="<!-- PROFILE_NOT_CONFIGURED -->\\n工业设计本科，求职地区为杭州及周边。以下为隔离测试资料：参与保鲜盒外观、三维建模、打样与工厂协同。";document.getElementById("settings-form").requestSubmit()');
+    await waitFor('__qa.saved.model.provider === "codex" && document.getElementById("fields").disabled === false');
+    assert.equal(await evaluate('__qa.saved.profile.includes("PROFILE_NOT_CONFIGURED")'),false);
     assert.equal(await evaluate('document.getElementById("tone").options.length'),4);
     const professionalHelp=await evaluate('document.getElementById("tone-help").textContent');
     await evaluate('document.getElementById("tone").value="bold";document.getElementById("tone").dispatchEvent(new Event("change"))');
@@ -123,7 +121,7 @@ async function waitFor(expression) {
     await waitFor('document.getElementById("status").textContent.includes("配对码")');
     assert.equal(await evaluate('document.getElementById("fields").disabled'),true);
     assert.equal(await evaluate('document.getElementById("retry-load").hidden'),false);
-    console.log(JSON.stringify({ok:true,assertions:19,checksAdded:['four distinct tone choices','tone preference persists','file selection and base64 upload','import preview does not replace profile','reviewed edit appended explicitly','import does not auto-save','confirmed text saved explicitly','preserves unsaved user facts when importing into a template'],screenshot:screenshotPath||null}));
+    console.log(JSON.stringify({ok:true,assertions:20,checksAdded:['Codex login only; no API inputs or provider picker','Codex login check excludes personal profile','Codex timeout preserved','not-logged-in state shown as error','four distinct tone choices','tone preference persists','file selection and base64 upload','import preview does not replace profile','reviewed edit appended explicitly','import does not auto-save','confirmed text saved explicitly','preserves unsaved user facts when importing into a template'],screenshot:screenshotPath||null}));
   } finally {
     socket?.close();child.kill();await delay(500);
     const resolved=path.resolve(profile);

@@ -40,20 +40,20 @@ function modelSettingsSender(sender) {
 
 function cleanModelSettings(model) {
   if (!model || typeof model !== 'object' || Array.isArray(model)) throw new Error('模型设置不正确。');
-  const result = {};
-  for (const key of ['provider','baseUrl','model','apiKey','responseFormat']) {
-    if (typeof model[key] === 'string') result[key] = model[key];
+  if (model.provider !== undefined && model.provider !== 'codex') throw new Error('本助手统一使用 Codex 登录方式。');
+  for (const key of ['baseUrl','model','apiKey']) {
+    if (model[key] !== undefined && model[key] !== '') throw new Error('请使用 Codex 登录，不填写其他模型接口或密钥。');
   }
-  if (typeof model.clearApiKey === 'boolean') result.clearApiKey = model.clearApiKey;
-  if (typeof model.timeoutMs === 'number') result.timeoutMs = model.timeoutMs;
+  const result = {provider:'codex'};
+  if (model.timeoutMs !== undefined) {
+    if (!Number.isInteger(model.timeoutMs) || model.timeoutMs < 1000 || model.timeoutMs > 600000) throw new Error('生成等待时间不正确。');
+    result.timeoutMs = model.timeoutMs;
+  }
   return result;
 }
 
 function publicSettings(data) {
-  const model = {};
-  for (const key of ['provider','baseUrl','model','responseFormat','timeoutMs','hasApiKey']) {
-    if (data?.model?.[key] !== undefined) model[key] = data.model[key];
-  }
+  const model = {provider:'codex',timeoutMs:Number.isInteger(data?.model?.timeoutMs) ? data.model.timeoutMs : 120000};
   return { model, profile: typeof data?.profile === 'string' ? data.profile : '', profileReady: Boolean(data?.profileReady),
     preferences: {tone:TONES.has(data?.preferences?.tone) ? data.preferences.tone : 'professional'} };
 }
@@ -154,9 +154,8 @@ async function handle(message, sender) {
     }
     if (message.action === 'testModelSettings') {
       const model = cleanModelSettings(message.model);
-      const timeoutMs = Math.min(185000,Math.max(15000,(model.timeoutMs || 120000)+5000));
-      const result = await request('/api/model/test',config,'POST',{model},timeoutMs);
-      return { ok: Boolean(result.ok), message: typeof result.message === 'string' ? result.message : '模型连接测试完成。' };
+      const result = await request('/api/model/test',config,'POST',{model},10000);
+      return { ok: Boolean(result.ok), message: typeof result.message === 'string' ? result.message : 'Codex 登录检查完成。' };
     }
     if (message.action === 'importDocument') {
       if (typeof message.filename !== 'string' || !message.filename || message.filename.length > 255 || /[\\/]/.test(message.filename) ||

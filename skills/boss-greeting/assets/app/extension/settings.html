@@ -3,48 +3,22 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>模型与个人资料 · 求职招呼语助手</title>
+  <title>登录与个人资料 · 求职招呼语助手</title>
   <link rel="stylesheet" href="settings.css">
 </head>
 <body>
   <main>
-    <header><span class="eyebrow">求职招呼语助手</span><h1>模型与个人资料</h1><p>适用于 BOSS 直聘、猎聘与智联招聘网页版，结合真实经历生成岗位招呼语。</p></header>
+    <header><span class="eyebrow">求职招呼语助手</span><h1>登录与个人资料</h1><p>适用于 BOSS 直聘、猎聘与智联招聘网页版，结合真实经历生成岗位招呼语。</p></header>
     <output id="status" role="status" aria-live="polite">正在读取本地设置…</output>
     <form id="settings-form">
       <fieldset id="fields" disabled>
         <section aria-labelledby="model-title">
-          <div class="section-heading"><span class="step">1</span><div><h2 id="model-title">选择生成模型</h2><p>保存后应用所选模型，发送仍由你手动完成。</p></div></div>
-          <label for="provider">模型来源</label>
-          <select id="provider">
-            <option value="codex">Codex · 使用已有登录</option>
-            <option value="doubao">豆包 · 火山方舟 API</option>
-            <option value="ollama">Ollama · 本地模型</option>
-            <option value="lmstudio">LM Studio · 本地模型</option>
-            <option value="openai-compatible">其他 OpenAI 兼容接口</option>
-          </select>
-          <p id="provider-help" class="help"></p>
-          <div id="http-fields" hidden>
-            <label for="base-url">接口地址（Base URL）</label>
-            <input id="base-url" type="url" spellcheck="false" placeholder="https://你的模型服务地址/v1" autocomplete="off">
-            <p class="help">填写基础地址，程序会添加 /chat/completions。</p>
-            <label for="model">模型名称或接入点 ID</label>
-            <input id="model" type="text" spellcheck="false" autocomplete="off">
-            <label for="api-key">API Key <span id="key-state" class="optional"></span></label>
-            <input id="api-key" type="password" autocomplete="new-password" spellcheck="false" placeholder="填写模型服务商提供的密钥">
-            <p id="key-help" class="help">密钥保存在本机助手配置中，页面不会回显已保存的密钥。</p>
-            <label class="check"><input id="clear-key" type="checkbox">清除这个模型已保存的密钥</label>
-            <details>
-              <summary>高级选项</summary>
-              <label for="response-format">结构化输出方式</label>
-              <select id="response-format"><option value="auto">自动兼容</option><option value="json_object">JSON 对象</option><option value="json_schema">JSON Schema</option><option value="none">普通文本（内容需为 JSON）</option></select>
-              <p class="help">一般使用“自动兼容”。模型不支持结构化参数时，可选择普通文本。</p>
-              <label for="timeout">等待时间（秒）</label>
-              <input id="timeout" type="number" min="10" max="180" step="1" value="120">
-            </details>
-          </div>
-          <p id="data-note" class="notice"></p>
-          <button id="test-model" class="secondary" type="button">测试模型连接</button>
-          <p class="help">测试仅发送简短的模拟请求，不发送你的个人资料或真实岗位。</p>
+          <div class="section-heading"><span class="step">1</span><div><h2 id="model-title">Codex · 使用已有登录</h2><p>统一由本机 Codex 命令行生成草稿，发送仍由你手动完成。</p></div></div>
+          <p class="notice">请先安装 Codex 命令行，并使用 ChatGPT 账号登录。通过豆包等 AI 安装本助手后，也使用同一套 Codex 登录方式生成。</p>
+          <p class="help">未登录时，在终端运行 <code>codex login</code>，按提示完成 ChatGPT 登录。</p>
+          <button id="test-model" class="secondary" type="button">检查 Codex 登录</button>
+          <p class="help">此按钮只检查本机安装和登录状态，不发送个人资料或岗位，不额外生成草稿。</p>
+          <p class="help">实际生成时，岗位文字与已确认的个人资料会交给 Codex 处理。</p>
         </section>
         <section aria-labelledby="tone-title">
           <div class="section-heading"><span class="step">2</span><div><h2 id="tone-title">选择招呼语语气</h2><p>只改变表达方式，经历、能力和成果始终以真实资料为准。</p></div></div>
@@ -65,7 +39,7 @@
               <label for="import-preview">识别结果（可修改后确认）</label>
               <textarea id="import-preview" rows="10" spellcheck="false"></textarea>
               <p id="import-warnings" class="help"></p>
-              <p class="help">请核对识别出的姓名、日期、项目职责和数字，并区分个人作品与参考素材。确认后的文字才会在保存后用于所选模型生成。</p>
+              <p class="help">请核对识别出的姓名、日期、项目职责和数字，并区分个人作品与参考素材。确认后的文字才会在保存后用于 Codex 生成。</p>
               <button id="append-import" type="button" class="secondary">确认并加入个人资料</button>
             </div>
           </div>

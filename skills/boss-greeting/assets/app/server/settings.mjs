@@ -1,8 +1,9 @@
 import { readFile, writeFile, rename, mkdir, copyFile, unlink } from 'node:fs/promises';
 import { randomUUID, createHash } from 'node:crypto';
 import path from 'node:path';
-import { normalizeModelSettings, publicModelSettings, testModelConnection } from './providers.mjs';
+import { normalizeModelSettings, publicModelSettings } from './providers.mjs';
 import { normalizePreferences } from './core.mjs';
+import { checkCodexLogin } from '../scripts/codex.mjs';
 
 export function isProfileReady(profile) {
   return typeof profile === 'string' && profile.trim().length >= 80 && !profile.includes('<!-- PROFILE_NOT_CONFIGURED -->');
@@ -27,9 +28,10 @@ export async function atomicWrite(filename, data, operations = {}) {
 }
 
 export class SettingsStore {
-  constructor({root, config, configPath = path.join(root,'private','config.json')}) {
+  constructor({root, config, configPath = path.join(root,'private','config.json'),checkCodex=checkCodexLogin}) {
     this.root = root; this.config = config; this.configPath = configPath;
     this.profilePath = path.join(root,'private','profile.md'); this.writes = Promise.resolve();
+    this.checkCodex=checkCodex;
   }
   model() { return normalizeModelSettings(this.config.model || {provider:'codex',timeoutMs:this.config.timeoutMs || 120000}, {allowIncomplete:true}); }
   preferences() { return normalizePreferences(this.config.preferences); }
@@ -43,13 +45,7 @@ export class SettingsStore {
     return {model:publicModelSettings(this.model()),preferences:this.preferences(),profile,profileReady:isProfileReady(profile)};
   }
   prepareModel(input) {
-    if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('模型设置格式不正确');
-    if (input.apiKey !== undefined && typeof input.apiKey !== 'string') throw new Error('API Key 格式不正确');
-    const current = this.model();
-    const next = normalizeModelSettings({...input,apiKey:''}, {allowIncomplete:true});
-    const sameTarget = current.provider === next.provider && current.baseUrl === next.baseUrl;
-    next.apiKey = input.clearApiKey === true ? '' : (input.apiKey?.trim() || (sameTarget ? current.apiKey : '') || '');
-    return normalizeModelSettings(next, {allowIncomplete:true});
+    return normalizeModelSettings(input);
   }
   async update(body) {
     const operation = this.writes.then(async () => {
@@ -67,9 +63,8 @@ export class SettingsStore {
     return operation;
   }
   async test(input) {
-    const settings = input?.model ? this.prepareModel(input.model) : this.model();
-    if (settings.provider === 'codex') return {ok:true,message:'已选择 Codex。请使用现有登录；打开岗位后可验证实际生成。此按钮不额外调用 Codex。'};
-    return testModelConnection(settings);
+    if (input?.model) this.prepareModel(input.model); else this.model();
+    return this.checkCodex({codexPath:this.config.codexPath,env:process.env});
   }
   async context() {
     await this.writes;

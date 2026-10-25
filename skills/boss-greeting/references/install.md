@@ -1,89 +1,62 @@
-# 从 GitHub 安装和接入宿主模型
+# 安装与 Codex 登录
 
-本技能支持 Windows 10/11 的 Chrome、Edge，以及 BOSS直聘、猎聘和智联招聘的网页岗位详情。模型提供商与 AI 客户端是两个层次：提供商生成文字；客户端需要本地工具才能安装、执行并常驻运行助手。
+本版支持 Windows 10/11、Chrome/Edge，以及 BOSS直聘、猎聘、智联招聘网页版。安装 AI 客户端与实际生成程序是两层：豆包等有本地工具的客户端可以安装技能；生成统一由本机 Codex CLI 使用用户的 ChatGPT 登录完成。不要索取其他模型 API Key，也不把任意聊天客户端的登录当作本地程序凭证。
 
-## 完整性与定位
+## 定位与检测
 
-安装后，本技能必须同时包含：
+技能目录必须同时包含 `SKILL.md`、`references/install.md` 和完整 `assets/app/`，其中有 `scripts/install.mjs`、`scripts/codex.mjs`、`scripts/bootstrap.ps1`、`server/`、`extension/`、`templates/`。仅安装说明文件不足以运行。
 
-```text
-boss-greeting/
-  SKILL.md
-  agents/openai.yaml
-  references/install.md
-  assets/app/
-    server/
-    extension/
-    scripts/install.mjs
-    scripts/configure-host.mjs
-    scripts/bootstrap.ps1
-    scripts/start.ps1
-    scripts/stop.ps1
-    scripts/import-document.ps1
-    templates/
-```
-
-如果只下载了 `SKILL.md`，继续取得同一仓库 `skills/boss-greeting/` 的完整目录。不要安装一份缺少 app 的说明文件后声称已经能够检测浏览器。
-
-Skill 安装目录取决于宿主；使用宿主已知的技能路径。源码仓库中的目录是 `skills/boss-greeting`。使用支持 Agent Skills 的安装器时，可以让宿主自行安装该目录；通用 CLI 示例见仓库 README。不要向不支持技能的聊天客户端写入猜测的配置目录。
-
-## 准备并诊断
-
-以下命令以技能目录为当前目录；使用绝对路径也可。先确认 Node.js 22+，然后：
+以技能真实目录为当前目录，或使用脚本绝对路径：
 
 ```powershell
 node assets/app/scripts/install.mjs --diagnose
 ```
 
-Windows 未将 Node 放入 PATH 时，可以运行：
+Node 未加入 PATH 时：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File assets/app/scripts/bootstrap.ps1 -Diagnose
 ```
 
-诊断不搜索账号存储、不调用付费生成，不写入模型密钥。仅当用户希望自动探测本机模型时增加 `--detect-local`，读取固定本机端口的 `/v1/models`。发现多个模型或多套服务时，展示脱敏候选，让用户明确选择。
+诊断只寻找可执行文件并调用 `codex login status`，不执行模型生成、不读认证文件、不搜索聊天登录或 API 环境变量。Codex 桌面应用可能附带可用原生命令行。检测到其路径时优先复用，不重复安装。
 
-## 应用已经明确的连接
+## 补齐 Codex 并登录
 
-优先顺序：用户本次明确指定的连接；宿主明确暴露并允许复用的当前连接；用户选择的本地服务。标准脚本支持 `BOSS_HELPER_*` 专用环境变量和若干命名提供商变量，详细候选由诊断输出。不能仅凭电脑装了某个 AI 或环境里存在某个 Key 就断言那是当前宿主模型。
-
-完整、唯一且用户允许复用的环境配置可用：
+缺少 Codex 时，按 [官方 CLI 安装说明](https://learn.chatgpt.com/docs/codex/cli) 安装。在已有 npm 的环境可运行：
 
 ```powershell
-node assets/app/scripts/install.mjs --apply-host-env --start
+npm install -g @openai/codex@latest
 ```
 
-显式指定服务和模型时，Key 只从指定环境变量读取，避免把明文放在命令行中：
+Node 便携二进制不代表 npm 也已安装。无 npm 时使用 [官方 Windows 独立安装器说明](https://learn.chatgpt.com/docs/enterprise/windows-deployment)，不要下载第三方修改版。正常安装后，必要时打开新终端，使用户 PATH 更新。
+
+让用户用自己的账号完成浏览器认证：
 
 ```powershell
-node assets/app/scripts/install.mjs --provider doubao --model "控制台中实际可调用的模型或接入点ID" --api-key-env ARK_API_KEY --start
-node assets/app/scripts/install.mjs --provider deepseek --model "控制台中实际可调用的模型ID" --api-key-env DEEPSEEK_API_KEY --start
-node assets/app/scripts/install.mjs --provider ollama --model "本机实际模型完整名称" --start
-node assets/app/scripts/install.mjs --provider lmstudio --model "本地服务实际模型ID" --start
+codex login
+codex login status
 ```
 
-自定义 API 使用 `--provider openai-compatible --base-url "完整基础地址" --model "模型ID" --api-key-env "用户指定的变量名"`。程序自动添加 `/chat/completions`。
+`codex login` 默认开启 ChatGPT 浏览器登录。若本机回调不可用，可按 [官方认证说明](https://learn.chatgpt.com/docs/auth) 使用 `codex login --device-auth`，前提是账号或工作区允许设备码登录。认证需要用户自行完成，不代填密码、不复制登录缓存。
 
-如果宿主明确是 Codex，且用户要求复用该宿主，可以选择 `--provider codex --start`，由已安装的命令行使用自己的登录。不要复制其认证文件。其他客户端的登录不会自动变成 Codex 登录。
+`login status` 的退出码为 0 只说明有认证信息，还必须确认方式为 ChatGPT。API Key 登录、状态未知、检查超时都不能报告为本版可用。登录成功也不等于实际生成通过，账号可用权限与额度以实际状态为准。
 
-默认保留已经配置好的模型。确实需要替换原连接时才增加 `--replace-model`。此标志只改变本助手，不修改宿主客户端的设置。API Key 只保存在实际 appRoot/private/config.json；不能把它提交到仓库。
+## 部署和升级
 
-默认 appRoot 是 `%LOCALAPPDATA%/BOSS-Greeting-Helper`，与 skill 安装目录分开，防止更新 skill 时丢失私有状态。自定义部署位置可用 `--install-dir "用户指定的固定目录"`。后续手动运行 configure-host.mjs 时增加 `--root "安装报告中的实际 appRoot"`，不能把技能源码目录误当作已部署目录。安装器只更新明确列出的程序文件，保留 private 中的资料、模型和配对码。
+```powershell
+node assets/app/scripts/install.mjs --start
+```
 
-## 浏览器与个人资料
+或运行 `powershell -NoProfile -ExecutionPolicy Bypass -File assets/app/scripts/bootstrap.ps1 -Start`。默认程序目录为 `%LOCALAPPDATA%/BOSS-Greeting-Helper`；以安装输出的 appRoot、extensionPath、pairingFile 为准。技能文件与运行状态分开，更新技能不会清空运行目录 private。安装器只复制明确列出的程序文件。
 
-安装程序输出 appRoot、extensionPath 和 pairingFile，不输出配对码内容。打开 Chrome 的 `chrome://extensions` 或 Edge 的 `edge://extensions`，加载输出的 extensionPath。浏览器所要求的开发者模式、加载和权限由其正常界面完成；不要用注册表、策略或调试绕过。
+1.3.0 将旧版非 Codex 模型配置先备份到本机 private，再迁移到 Codex；不再调用旧接口，不把旧密钥或备份带入公开源码、安装包。保留个人资料、配对与四档语气，不修改 Codex 自己的账号状态。
 
-将 pairingFile 内容填写到扩展弹窗；只在可信本地设置界面操作。打开“模型与个人资料设置”，从用户提供的简历、作品集整理真实事实：专业、学历、目标地区、项目职责、工具熟练程度、作品来源，以及明确不确定的内容。可选择PDF、PNG/JPG/JPEG/BMP或UTF-8 TXT/MD，在本机识别后预览、编辑、确认加入资料，再保存。每个文件25MiB以内，PDF最多40页；Windows没有OCR语言时按明确错误提示补齐系统组件，不转发到其他云端识别。没有资料时先完成程序安装，明确报告“个人资料待补充”，不要填开发者信息或虚构经历。
+## 浏览器与资料
 
-默认语气为严肃专业，也可选择亲和活泼、热情夸张、灵动巧思。设置页保存默认语气，岗位浮窗可快速切换。表达规则分别约束客观、口语、热情、单句巧思；事实依据和篇幅要求保持一致。
+在 `chrome://extensions` 或 `edge://extensions` 按正常界面加载 extensionPath。用 pairingFile 中的本机配对码完成配对；不要将配对码输出到聊天或日志。设置页检查 Codex 登录并填写用户自己的专业、学历、目标地区、真实经历、项目职责与作品依据。没有资料时报告“个人资料待补充”，不填开发者信息。
 
-实际生成前，在设置页执行“测试模型连接”。它只发送简短模拟文字，不带简历或真实岗位。Codex 通道显示选择状态，不额外消耗一次模型调用；需要在真实岗位生成后才算实际验证。
+资料可导入 PDF、PNG/JPG/JPEG/BMP、UTF-8 TXT/MD，每个文件 25 MiB，PDF 最多识别前 40 页。Windows 本机 OCR 后先显示预览，核对并确认加入、保存后才用于生成；OCR 不支持时按系统错误补齐识别语言组件，不转发其他识别服务。
 
-启用前台岗位检测，刷新岗位页面。验证职位被正确识别、草稿和依据出现、切换岗位或语气不显示旧结果。猎聘、智联岗位正文需要正常登录或展开时由用户完成。不会自动发送。扩展升级后需在浏览器扩展管理页重新加载，再刷新岗位页；新增站点权限按浏览器正常界面处理。停止服务运行 app 的 `scripts/stop.ps1`。
+默认严肃专业，也可选择亲和活泼、热情夸张、灵动巧思。启用前台检测，刷新岗位详情。验证标题与正文对应、草稿与依据出现、切换岗位或语气不展示旧结果。猎聘、智联的登录或正文展开由用户正常完成。实际生成成功后才能报告生成通道已验证；发送始终由用户手动完成。
 
-## 完成报告
-
-分别报告：技能文件已安装、运行环境已找到、服务是否启动、模型连接是否仅已配置还是已测试、浏览器是否加载、个人资料是否就绪。需要用户操作时给出实际本机路径和具体下一步，不把尚未完成的状态说成完成。
-
-支持技能和本地执行的客户端可完成安装及配置；只有文字聊天能力的客户端可按本技能写草稿，但不能因此持续监控本机浏览器。MCP Sampling 等宿主推理通道需要客户端明确支持和授权，本版本不把普通聊天客户端包装成该通道。
+升级扩展后请在扩展管理页重新加载，再刷新岗位页。停止服务运行 appRoot 下的 `scripts/stop.ps1`。完成报告分别说明技能、运行环境、Codex 登录、服务、浏览器、资料与实际生成状态，不把待办写成成功。

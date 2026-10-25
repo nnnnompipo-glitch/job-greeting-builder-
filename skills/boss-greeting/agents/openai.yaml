@@ -1,4 +1,4 @@
 interface:
   display_name: "求职招呼语助手"
-  short_description: "支持BOSS、猎聘和智联，导入图片与PDF，选择四种语气并用允许的模型生成草稿"
-  default_prompt: "用 $boss-greeting 安装并配置本机求职招呼语助手，导入我的个人材料并选择语气，优先复用我允许使用的模型连接，生成后由我手动发送。"
+  short_description: "使用 Codex 的 ChatGPT 登录，为 BOSS、猎聘和智联岗位生成四种语气的招呼语草稿"
+  default_prompt: "用 $boss-greeting 安装求职招呼语助手，检测 Codex 并指导我用自己的 ChatGPT 账号登录，导入个人资料后生成草稿，由我手动发送。"
