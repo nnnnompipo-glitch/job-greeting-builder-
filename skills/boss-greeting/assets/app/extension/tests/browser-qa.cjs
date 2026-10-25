@@ -104,7 +104,7 @@ async function waitFor(expression, timeout = 6000) {
           }
           if (!__qa.state.enabled || !__qa.state.active) return { ok: false, code: 'inactive', error: '检测已暂停。' };
           if (message.action === 'getJob' && __qa.mode === 'progress') {
-            const running=++__qa.progressPolls===1;
+            const running=!__qa.progressFinish;++__qa.progressPolls;
             return {ok:true,data:running?{id:'progress-fixture',status:'running'}:{id:'progress-fixture',status:'done',result:{greeting:'您好，希望结合工业设计项目经验进一步沟通当前岗位。',matches:[],cautions:[]}}};
           }
           if (message.action === 'observeJob') {
@@ -119,6 +119,7 @@ async function waitFor(expression, timeout = 6000) {
     })()`);
     await evaluate(fs.readFileSync(path.join(extension, 'platforms.js'), 'utf8'));
     await evaluate(fs.readFileSync(path.join(extension, 'extract.js'), 'utf8'));
+    await evaluate(fs.readFileSync(path.join(extension, 'code-rain.js'), 'utf8'));
     await evaluate(fs.readFileSync(path.join(extension, 'content.js'), 'utf8'));
     await waitFor('__qa.shadow?.getElementById("status").textContent.includes("检测已暂停")');
     assert.equal(await evaluate('__qa.shadow.getElementById("toggle").hidden'), false);
@@ -241,27 +242,43 @@ async function waitFor(expression, timeout = 6000) {
     await waitFor('__qa.shadow.getElementById("progress").dataset.state==="queued"');
     assert.equal(await evaluate('__qa.shadow.getElementById("progress-bar").hasAttribute("aria-valuenow")'),false);
     await waitFor('__qa.shadow.getElementById("progress").dataset.state==="running"');
+    await waitFor('Array.from(__qa.shadow.querySelector("canvas").getContext("2d").getImageData(0,0,__qa.shadow.querySelector("canvas").width,__qa.shadow.querySelector("canvas").height).data).some((v,i)=>i%4===3&&v>0)');
     assert.equal(await evaluate('__qa.shadow.getElementById("status").hidden'),true);
     assert.equal(await evaluate('__qa.shadow.getElementById("greeting").getAttribute("aria-busy")'),'true');
     assert.equal(await evaluate('getComputedStyle(__qa.shadow.querySelector(".progress-fill")).animationName'),'greeting-progress');
     if(process.argv[2]){
-      const runningShot=await rpc('Page.captureScreenshot',{format:'png'});
+      const clip=await evaluate('(()=>{const r=document.getElementById("boss-local-greeting-helper").getBoundingClientRect();return {x:r.x-8,y:r.y-8,width:r.width+16,height:r.height+16,scale:1}})()');
+      const runningShot=await rpc('Page.captureScreenshot',{format:'png',clip});
       const runningPath=path.resolve(process.argv[2]).replace(/\.png$/i,'-generating.png');
       fs.mkdirSync(path.dirname(runningPath),{recursive:true});fs.writeFileSync(runningPath,Buffer.from(runningShot.data,'base64'));
+      const markup=await evaluate('__qa.shadow.innerHTML');
+      const rainCode=fs.readFileSync(path.join(extension,'code-rain.js'),'utf8');
+      const previewScript=`${rainCode}\nconst shadow=document.getElementById('demo').attachShadow({mode:'open'});shadow.innerHTML=${JSON.stringify(markup)};
+        const effect=RecruitmentCodeRain.mount(shadow.querySelector('canvas'),shadow.querySelector('section'));
+        shadow.querySelectorAll('button,select').forEach(item=>item.disabled=true);
+        let timers=[];function stage(state,label,badge){const bar=shadow.getElementById('progress-bar');shadow.getElementById('progress').dataset.state=state;shadow.getElementById('progress-label').textContent=label;shadow.getElementById('progress-stage').textContent=badge;effect.setStage(state);if(state==='done'){bar.setAttribute('aria-valuenow','100');shadow.getElementById('greeting').value='招呼语已就绪。这里使用模拟任务展示背景动画。';}else bar.removeAttribute('aria-valuenow');}
+        function replay(){timers.forEach(clearTimeout);shadow.getElementById('greeting').value='';stage('reading','读取岗位信息','准备中');timers=[setTimeout(()=>stage('queued','等待生成招呼语','排队中'),2000),setTimeout(()=>stage('running','正在生成招呼语','生成中'),4000),setTimeout(()=>stage('done','招呼语已就绪','已完成'),18000)];}
+        document.getElementById('replay').addEventListener('click',replay);replay();
+        document.addEventListener('visibilitychange',()=>effect.setVisible(document.visibilityState==='visible'));`;
+      const preview='<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>代码雨 · 动画预览</title><style>body{margin:0;padding:28px;background:#050b09;color:#b8dec9;font:14px/1.7 system-ui;display:grid;justify-content:center;gap:12px}h1{font-size:20px;margin:0}p{margin:0;color:#8bab98}#demo{width:342px;max-width:calc(100vw - 56px)}#replay{padding:10px;border:1px solid #2e6545;border-radius:8px;background:#123422;color:#b9f5d0;cursor:pointer}</style><h1>代码雨 · 动画预览</h1><p>模拟任务，18 秒后完成并清除粒子。</p><div id="demo"></div><button id="replay">重新播放动画</button><script>'+previewScript.replace(/<\/script/gi,'<\\/script')+'</script></html>';
+      fs.writeFileSync(path.resolve(process.argv[2]).replace(/\.png$/i,'-preview.html'),preview);
     }
     await rpc('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
     assert.equal(await evaluate('getComputedStyle(__qa.shadow.querySelector(".progress-fill")).animationName'),'none');
+    await waitFor('Array.from(__qa.shadow.querySelector("canvas").getContext("2d").getImageData(0,0,__qa.shadow.querySelector("canvas").width,__qa.shadow.querySelector("canvas").height).data).every(v=>v===0)');
     await rpc('Emulation.setEmulatedMedia',{features:[]});
+    await evaluate('__qa.progressFinish=true');
     await waitFor('__qa.shadow.getElementById("progress").dataset.state==="done"');
     assert.equal(await evaluate('__qa.shadow.getElementById("progress-bar").getAttribute("aria-valuenow")'),'100');
     assert.equal(await evaluate('__qa.shadow.getElementById("greeting").getAttribute("aria-busy")'),'false');
+    assert.equal(await evaluate('Array.from(__qa.shadow.querySelector("canvas").getContext("2d").getImageData(0,0,__qa.shadow.querySelector("canvas").width,__qa.shadow.querySelector("canvas").height).data).every(v=>v===0)'),true);
     const screenshotPath = process.argv[2];
     if (screenshotPath) {
       const screenshot = await rpc('Page.captureScreenshot', { format: 'png' });
       fs.mkdirSync(path.dirname(path.resolve(screenshotPath)), { recursive: true });
       fs.writeFileSync(screenshotPath, Buffer.from(screenshot.data, 'base64'));
     }
-    console.log(JSON.stringify({ ok: true, assertions: ['paired paused state shows enable button without submitting', 'page enable button starts generation', 'page pause button clears output and stops submission', 'page enable can resume again', 'unpaired page hides enable button', 'inactive page cannot enable or submit', 'scoped extraction', 'one submission per unchanged job', 'no implicit clipboard write', 'editable explicit copy', 'collapse', 'clears on job switch', 'blocks stale result before debounce', 'pause revokes pending result', 'recommendation route', 'processed route not resubmitted by navigation interval', 'failed job does not auto-retry after clock advance', 'explicit retry resumes generation','four tones only','changing tone blocks old-tone response','tone hint matches current selection','late getState cannot revert tone selection','Liepin scoped DOM extraction','Zhilian scoped DOM extraction','guest-clamped description not read','panel restored while background state read is pending','queued and running animation without fictional percentages','completion is 100 percent','pause and error clear progress','reduced motion disables animation'], externalRequestsBlocked: blocked.length, screenshot: screenshotPath || null }));
+    console.log(JSON.stringify({ ok: true, assertions: ['paired paused state shows enable button without submitting', 'page enable button starts generation', 'page pause button clears output and stops submission', 'page enable can resume again', 'unpaired page hides enable button', 'inactive page cannot enable or submit', 'scoped extraction', 'one submission per unchanged job', 'no implicit clipboard write', 'editable explicit copy', 'collapse', 'clears on job switch', 'blocks stale result before debounce', 'pause revokes pending result', 'recommendation route', 'processed route not resubmitted by navigation interval', 'failed job does not auto-retry after clock advance', 'explicit retry resumes generation','four tones only','changing tone blocks old-tone response','tone hint matches current selection','late getState cannot revert tone selection','Liepin scoped DOM extraction','Zhilian scoped DOM extraction','guest-clamped description not read','panel restored while background state read is pending','queued and running animation without fictional percentages','completion is 100 percent','pause and error clear progress','reduced motion disables animation','code rain renders pixels while generating','completion clears code rain canvas','reduced motion clears code rain canvas'], externalRequestsBlocked: blocked.length, screenshot: screenshotPath || null }));
   } finally {
     socket?.close();
     processHandle.kill();

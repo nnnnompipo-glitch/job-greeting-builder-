@@ -22,7 +22,7 @@ jobs:
           node-version: '24'
       - name: Verify complete install payload
         run: |
-          $required = @('scripts/bootstrap.ps1','scripts/install.mjs','scripts/codex.mjs','scripts/configure-host.mjs','scripts/import-document.ps1','server/index.mjs','server/providers.mjs','server/settings.mjs','server/imports.mjs','extension/manifest.json','extension/platforms.cjs','extension/platforms.js','templates/profile.example.md')
+          $required = @('scripts/bootstrap.ps1','scripts/install.mjs','scripts/codex.mjs','scripts/configure-host.mjs','scripts/import-document.ps1','server/index.mjs','server/providers.mjs','server/settings.mjs','server/imports.mjs','extension/manifest.json','extension/platforms.cjs','extension/platforms.js','extension/code-rain.js','templates/profile.example.md')
           foreach ($file in $required) {
             if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { throw "Missing runtime file: $file" }
           }

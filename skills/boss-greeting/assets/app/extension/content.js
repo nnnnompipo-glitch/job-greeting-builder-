@@ -1,7 +1,7 @@
 (() => {
   if (globalThis.__bossGreetingHelperLoaded) return;
   globalThis.__bossGreetingHelperLoaded = true;
-  let host, ui, observer, scanTimer, maxTimer, pollTimer;
+  let host, ui, observer, scanTimer, maxTimer, pollTimer, rain;
   let fingerprint = '', epoch = 0, pendingId = '', scanning = false, scanAgain = false;
   let failed = false, lastUrl = location.href, changingTone = false;
   const tones = {
@@ -15,6 +15,7 @@
     if (!ui) return;
     const labels = {reading:['读取岗位信息','准备中'],queued:['等待生成招呼语','排队中'],running:['正在生成招呼语','生成中'],done:['招呼语已就绪','已完成']};
     const label = labels[state];
+    rain?.setStage(state);
     ui.progress.hidden = !label;
     ui.progress.dataset.state = label ? state : '';
     ui.greeting.setAttribute('aria-busy', String(Boolean(label && state !== 'done')));
@@ -63,38 +64,44 @@
   }
   function makePanel() {
     if (host?.isConnected) return;
+    rain?.destroy();rain=null;
     host = document.createElement('div');
     host.id = 'boss-local-greeting-helper';
     host.style.cssText = 'position:fixed!important;right:18px!important;bottom:24px!important;z-index:2147483646!important;width:342px!important;max-width:calc(100vw - 28px)!important;';
     const shadow = host.attachShadow({ mode: 'closed' });
     const style = document.createElement('style');
     style.textContent = `
-      :host{all:initial;font:14px/1.55 system-ui,"Microsoft YaHei",sans-serif;color:#183b34}
-      *{box-sizing:border-box}section{background:#fff;border:1px solid #b8d7cf;border-radius:14px;box-shadow:0 9px 40px #163b3526;overflow:hidden}
-      header{display:flex;justify-content:space-between;align-items:center;background:#eaf6f1;padding:12px 14px;font-weight:650}
-      button{font:inherit;border:0;border-radius:7px;cursor:pointer;padding:7px 11px;background:#087c68;color:white}
-      button:disabled{opacity:.45;cursor:default}header button{background:transparent;color:#296c5d;padding:2px 6px;font-size:12px}
-      main{padding:13px 14px;max-height:70vh;overflow:auto}p{margin:0 0 9px}.status{font-size:12px;color:#526f64;white-space:pre-wrap}
-      .progress{padding:11px 12px;margin-bottom:12px;border:1px solid #d1e8df;border-radius:10px;background:linear-gradient(135deg,#f0faf5,#fcfffd)}
-      .progress-row{display:flex;align-items:center;justify-content:space-between;gap:8px}.progress-label{font-size:12px;font-weight:600;color:#245b4b}
-      .progress-stage{flex-shrink:0;padding:2px 7px;border-radius:20px;background:#e1f1e9;color:#32765e;font-size:10px;font-weight:600}
-      .progress-track{height:8px;margin-top:10px;overflow:hidden;border-radius:20px;background:#deede6}
-      .progress-fill{display:block;width:40%;height:100%;border-radius:inherit;background:linear-gradient(90deg,#61d4b7,#087c68,#32b99b);animation:greeting-progress 1.8s ease-in-out infinite alternate}
+      :host{all:initial;font:14px/1.55 system-ui,"Microsoft YaHei",sans-serif;color:#d4eddf;color-scheme:dark}
+      *{box-sizing:border-box}section{position:relative;isolation:isolate;background:#07120e;border:1px solid #28513d;border-radius:14px;box-shadow:0 12px 44px #0007,0 0 24px #38e89412;overflow:hidden}
+      .code-rain{position:absolute;inset:0;width:100%;height:100%;z-index:0;pointer-events:none}
+      header,main{position:relative;z-index:1}header{display:flex;justify-content:space-between;align-items:center;background:#10251bcc;border-bottom:1px solid #244532;padding:12px 14px;font-weight:650;color:#bbf6d8}
+      header>span:before{content:'>_';margin-right:8px;font:700 13px Consolas,monospace;color:#62f5ad}
+      button{font:inherit;border:1px solid transparent;border-radius:7px;cursor:pointer;padding:7px 10px;background:#67edac;color:#062015;font-weight:600}
+      button:disabled{opacity:.4;cursor:default}header button{background:transparent;color:#8cb9a0;padding:2px 6px;font-size:12px}
+      button:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid #7affc0;outline-offset:2px}
+      main{padding:13px 14px;max-height:70vh;overflow:auto}p{margin:0 0 9px}.status{font-size:12px;color:#a5c2af;white-space:pre-wrap}
+      .progress{padding:11px 12px;margin-bottom:12px;border:1px solid #295d42;border-radius:10px;background:#0c251bbd}
+      .progress-row{display:flex;align-items:center;justify-content:space-between;gap:8px}.progress-label{font-size:12px;font-weight:600;color:#b9f8d6}
+      .progress-stage{flex-shrink:0;padding:2px 7px;border-radius:20px;background:#173f2c;color:#88f5b7;font-size:10px;font-weight:600}
+      .progress-track{height:8px;margin-top:10px;overflow:hidden;border-radius:20px;background:#173728}
+      .progress-fill{display:block;width:40%;height:100%;border-radius:inherit;background:linear-gradient(90deg,#20a96b,#8affc8,#38d58b);box-shadow:0 0 10px #5dffae40;animation:greeting-progress 1.8s ease-in-out infinite alternate}
       .progress[data-state="queued"] .progress-fill{animation-duration:2.6s}.progress[data-state="reading"] .progress-fill{animation-duration:1.3s}
-      .progress[data-state="done"] .progress-fill{width:100%;animation:none;background:#087c68}
+      .progress[data-state="done"] .progress-fill{width:100%;animation:none;background:#67edac}
       @keyframes greeting-progress{from{transform:translateX(0)}to{transform:translateX(150%)}}
-      @media(prefers-reduced-motion:reduce){.progress-fill{width:100%;animation:none;background:repeating-linear-gradient(110deg,#7ccbb4 0 8px,#deede6 8px 16px)}}
-      .title{font-weight:650;font-size:14px;overflow-wrap:anywhere}.hint{font-size:11px;color:#6c7c75;margin-top:10px;margin-bottom:0}
-      textarea{width:100%;min-height:132px;resize:vertical;font:14px/1.65 system-ui,"Microsoft YaHei",sans-serif;padding:10px;border:1px solid #bbd5ca;border-radius:8px;color:#183b34;background:#fcfffd}
-      .tone-label{display:block;font-size:12px;font-weight:600;margin-bottom:5px}select{width:100%;font:inherit;padding:7px 9px;border:1px solid #bbd5ca;border-radius:7px;background:#fff;color:#183b34}.tone-hint{font-size:11px;color:#64786c;margin:5px 0 10px}
-      .actions{display:flex;gap:8px;margin-top:10px}.secondary{background:#eaf1ee;color:#306052}
-      details{font-size:12px;margin-top:12px;color:#4d685d}summary{cursor:pointer}ul{padding-left:18px;margin:8px 0}li{margin:5px 0;overflow-wrap:anywhere}.caution{color:#8b6534}
+      @media(prefers-reduced-motion:reduce){.progress-fill{width:100%;animation:none;background:repeating-linear-gradient(110deg,#479d72 0 8px,#173728 8px 16px)}}
+      .title{font-weight:650;font-size:14px;overflow-wrap:anywhere}.hint{font-size:11px;color:#8eac99;margin-top:10px;margin-bottom:0}
+      textarea{width:100%;min-height:132px;resize:vertical;font:14px/1.65 system-ui,"Microsoft YaHei",sans-serif;padding:10px;border:1px solid #31533f;border-radius:8px;color:#daf2e3;background:#07150fce}textarea::placeholder{color:#819d8b}
+      .tone-label{display:block;font-size:12px;font-weight:600;margin-bottom:5px;color:#b8deca}select{width:100%;font:inherit;padding:7px 9px;border:1px solid #31533f;border-radius:7px;background:#0b1d14e8;color:#d4eddf}.tone-hint{font-size:11px;color:#91af9c;margin:5px 0 10px}
+      .actions{display:flex;gap:8px;margin-top:10px}.secondary{background:#143324e6;color:#b1dcc4;border-color:#29513a}
+      details{font-size:12px;margin-top:12px;color:#b1ccb9}summary{cursor:pointer}ul{padding-left:18px;margin:8px 0}li{margin:5px 0;overflow-wrap:anywhere}.caution{color:#e4bd78}
       [hidden]{display:none!important}
     `;
     const section = document.createElement('section');
     section.setAttribute('aria-label', '求职招呼语助手');
     // Static extension markup only. Job and generated text are assigned with textContent/value.
     section.innerHTML = '<header><span>招呼语助手</span><button type="button" id="collapse" aria-expanded="true">收起</button></header><main><p class="status" id="status" role="status">正在检查本地助手…</p><label class="tone-label" for="tone">招呼语语气</label><select id="tone" aria-label="选择招呼语语气"><option value="professional">严肃专业</option><option value="friendly">亲和活泼</option><option value="bold">热情夸张</option><option value="creative">灵动巧思</option></select><p class="tone-hint" id="tone-hint"></p><p class="title" id="title"></p><textarea id="greeting" aria-label="可编辑的招呼语" placeholder="打开岗位详情后，招呼语会显示在这里。" spellcheck="false"></textarea><div class="actions"><button type="button" id="copy" disabled>复制招呼语</button><button type="button" id="retry" class="secondary">重新检测</button><button type="button" id="toggle" class="secondary" hidden>开启检测</button></div><details id="details" hidden><summary>查看匹配依据与待确认信息</summary><ul id="matches"></ul><ul id="cautions" class="caution"></ul></details><p class="hint">仅检测当前前台岗位。核对并复制后，请自行到招聘平台发送。</p></main>';
+    const canvas=document.createElement('canvas');canvas.className='code-rain';canvas.setAttribute('aria-hidden','true');
+    section.prepend(canvas);
     shadow.append(style, section);
     document.documentElement.appendChild(host);
     const progressCard = document.createElement('div');
@@ -104,6 +111,7 @@
     progressCard.innerHTML = '<div class="progress-row"><span id="progress-label" class="progress-label" role="status"></span><span id="progress-stage" class="progress-stage" aria-hidden="true"></span></div><div id="progress-bar" class="progress-track" role="progressbar" aria-labelledby="progress-label" aria-valuemin="0" aria-valuemax="100"><span class="progress-fill"></span></div>';
     shadow.getElementById('status').after(progressCard);
     ui = Object.fromEntries(['status', 'progress', 'progress-label', 'progress-stage', 'progress-bar', 'title', 'greeting', 'copy', 'retry', 'toggle', 'tone', 'tone-hint', 'collapse', 'matches', 'cautions', 'details'].map(id => [id, shadow.getElementById(id)]));
+    rain=globalThis.RecruitmentCodeRain?.mount(canvas,section);
     ui['tone-hint'].textContent=tones.professional;
     ui.tone.addEventListener('change',async () => {
       const selected=ui.tone.value;
@@ -117,6 +125,7 @@
     ui.collapse.addEventListener('click', () => {
       const main = shadow.querySelector('main');
       main.hidden = !main.hidden;
+      rain?.setVisible(!main.hidden && document.visibilityState==='visible');
       ui.collapse.textContent = main.hidden ? '展开' : '收起';
       ui.collapse.setAttribute('aria-expanded', String(!main.hidden));
     });
@@ -213,7 +222,7 @@
   function reconcilePanel() {
     if (lastUrl !== location.href) { lastUrl = location.href; clearJob(); }
     if (!eligible()) {
-      if (host) { clearJob(); host.remove(); host = null; ui = null; }
+      if (host) { clearJob();rain?.destroy();rain=null;host.remove(); host = null; ui = null; }
       observer?.disconnect();
       observer = null;
       return false;
@@ -281,7 +290,10 @@
   chrome.runtime.onMessage.addListener(message => {
     if (message?.action === 'settingsChanged') { clearJob(); schedule(0); }
   });
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState !== 'visible') stopPoll(); else schedule(0); });
+  document.addEventListener('visibilitychange', () => {
+    rain?.setVisible(document.visibilityState==='visible' && ui?.collapse.getAttribute('aria-expanded')!=='false');
+    if (document.visibilityState !== 'visible') stopPoll(); else schedule(0);
+  });
   window.addEventListener('focus', () => schedule(0));
   window.addEventListener('popstate', () => schedule(0));
   window.addEventListener('pageshow', () => schedule(0));
