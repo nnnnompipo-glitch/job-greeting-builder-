@@ -103,7 +103,12 @@ async function waitFor(expression, timeout = 6000) {
             return { ok: true, data: { enabled: message.enabled, paired: __qa.state.paired } };
           }
           if (!__qa.state.enabled || !__qa.state.active) return { ok: false, code: 'inactive', error: '检测已暂停。' };
+          if (message.action === 'getJob' && __qa.mode === 'progress') {
+            const running=++__qa.progressPolls===1;
+            return {ok:true,data:running?{id:'progress-fixture',status:'running'}:{id:'progress-fixture',status:'done',result:{greeting:'您好，希望结合工业设计项目经验进一步沟通当前岗位。',matches:[],cautions:[]}}};
+          }
           if (message.action === 'observeJob') {
+            if (__qa.mode === 'progress') return {ok:true,data:{id:'progress-fixture',status:'queued'}};
             if (__qa.mode === 'defer') return new Promise(resolve => __qa.pending.push({ title: message.job.title, resolve }));
             if (__qa.mode === 'error') return { ok: true, data: { id: 'failed', status: 'error', error: '测试生成失败，请手动重试。' } };
             return { ok: true, data: { id: 'fixture', status: 'done', result: { greeting: '您好，我关注贵司的' + message.job.title + '岗位，希望结合工业设计项目经验进一步沟通。', matches: [{ requirement: '外观设计', evidence: '测试项目' }], cautions: ['测试资料需核对'] } } };
@@ -119,8 +124,11 @@ async function waitFor(expression, timeout = 6000) {
     assert.equal(await evaluate('__qa.shadow.getElementById("toggle").hidden'), false);
     assert.equal(await evaluate('__qa.shadow.getElementById("toggle").textContent'), '开启检测');
     assert.equal(await evaluate('__qa.messages.filter(message => message.action === "observeJob").length'), 0);
+    assert.equal(await evaluate('__qa.shadow.getElementById("progress").hidden'),true);
     await evaluate('__qa.shadow.getElementById("toggle").click()');
     await waitFor('__qa.shadow?.querySelector("textarea").value.includes("工业设计师 A")');
+    assert.equal(await evaluate('__qa.shadow.getElementById("progress-bar").getAttribute("aria-valuenow")'),'100');
+    assert.equal(await evaluate('__qa.shadow.getElementById("progress").dataset.state'),'done');
     assert.equal(await evaluate('__qa.messages.filter(message => message.action === "observeJob").length'), 1);
     assert.equal(await evaluate('__qa.messages.find(message => message.action === "observeJob").job.description.includes("聊天")'), false);
     assert.equal(await evaluate('__qa.state.enabled'), true);
@@ -128,6 +136,7 @@ async function waitFor(expression, timeout = 6000) {
     await waitFor('!__qa.state.enabled && __qa.shadow.getElementById("status").textContent.includes("检测已暂停")');
     assert.equal(await evaluate('__qa.shadow.querySelector("textarea").value'), '');
     assert.equal(await evaluate('__qa.shadow.getElementById("copy").disabled'), true);
+    assert.equal(await evaluate('__qa.shadow.getElementById("progress").hidden'),true);
     assert.equal(await evaluate('__qa.messages.filter(message => message.action === "observeJob").length'), 1);
     await evaluate('__qa.shadow.getElementById("toggle").click()');
     await waitFor('__qa.state.enabled && __qa.shadow.querySelector("textarea").value.includes("工业设计师 A")');
@@ -139,6 +148,8 @@ async function waitFor(expression, timeout = 6000) {
     await evaluate('__qa.shadow.getElementById("collapse").click()');
     await evaluate('__qa.mode = "defer"; document.querySelector("h1").textContent = "工业设计师 B"');
     await waitFor('__qa.pending.length === 1');
+    assert.equal(await evaluate('__qa.shadow.getElementById("progress").dataset.state'),'reading');
+    assert.equal(await evaluate('__qa.shadow.getElementById("progress-bar").hasAttribute("aria-valuenow")'),false);
     assert.equal(await evaluate('__qa.shadow.querySelector("textarea").value'), '');
     // Resolve B after the DOM has already switched to C, before debounce fires.
     await evaluate('document.querySelector("h1").textContent = "工业设计师 C"; __qa.pending[0].resolve({ ok: true, data: { id: "old-b", status: "done", result: { greeting: "过期的 B 招呼语", matches: [], cautions: [] } } })');
@@ -158,6 +169,7 @@ async function waitFor(expression, timeout = 6000) {
     assert.equal(await evaluate('__qa.messages.filter(message => message.action === "observeJob").length'), recommendationSubmissions, 'A route already processed by scan must not submit again at the navigation interval.');
     await evaluate('__qa.mode = "error"; document.querySelector("h1").textContent = "工业设计师 D"');
     await waitFor('__qa.shadow.getElementById("status").textContent.includes("测试生成失败")');
+    assert.equal(await evaluate('__qa.shadow.getElementById("progress").hidden'),true);
     const failedSubmissions = await evaluate('__qa.messages.filter(message => message.action === "observeJob").length');
     await evaluate('__qa.originalDateNow = Date.now; Date.now = () => __qa.originalDateNow() + 30000; window.dispatchEvent(new Event("focus"))');
     await delay(250);
@@ -225,13 +237,31 @@ async function waitFor(expression, timeout = 6000) {
     await waitFor('__qa.shadow.getElementById("status").textContent.includes("响应超时")');
     await evaluate('__qa.deferState=false;__qa.deadlineDelay=0;__qa.shadow.getElementById("retry").click()');
     await waitFor('__qa.shadow.getElementById("status").textContent.includes("已生成")');
+    await evaluate('__qa.mode="progress";__qa.progressPolls=0;document.querySelector("h1").textContent="工业设计师 F"');
+    await waitFor('__qa.shadow.getElementById("progress").dataset.state==="queued"');
+    assert.equal(await evaluate('__qa.shadow.getElementById("progress-bar").hasAttribute("aria-valuenow")'),false);
+    await waitFor('__qa.shadow.getElementById("progress").dataset.state==="running"');
+    assert.equal(await evaluate('__qa.shadow.getElementById("status").hidden'),true);
+    assert.equal(await evaluate('__qa.shadow.getElementById("greeting").getAttribute("aria-busy")'),'true');
+    assert.equal(await evaluate('getComputedStyle(__qa.shadow.querySelector(".progress-fill")).animationName'),'greeting-progress');
+    if(process.argv[2]){
+      const runningShot=await rpc('Page.captureScreenshot',{format:'png'});
+      const runningPath=path.resolve(process.argv[2]).replace(/\.png$/i,'-generating.png');
+      fs.mkdirSync(path.dirname(runningPath),{recursive:true});fs.writeFileSync(runningPath,Buffer.from(runningShot.data,'base64'));
+    }
+    await rpc('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
+    assert.equal(await evaluate('getComputedStyle(__qa.shadow.querySelector(".progress-fill")).animationName'),'none');
+    await rpc('Emulation.setEmulatedMedia',{features:[]});
+    await waitFor('__qa.shadow.getElementById("progress").dataset.state==="done"');
+    assert.equal(await evaluate('__qa.shadow.getElementById("progress-bar").getAttribute("aria-valuenow")'),'100');
+    assert.equal(await evaluate('__qa.shadow.getElementById("greeting").getAttribute("aria-busy")'),'false');
     const screenshotPath = process.argv[2];
     if (screenshotPath) {
       const screenshot = await rpc('Page.captureScreenshot', { format: 'png' });
       fs.mkdirSync(path.dirname(path.resolve(screenshotPath)), { recursive: true });
       fs.writeFileSync(screenshotPath, Buffer.from(screenshot.data, 'base64'));
     }
-    console.log(JSON.stringify({ ok: true, assertions: ['paired paused state shows enable button without submitting', 'page enable button starts generation', 'page pause button clears output and stops submission', 'page enable can resume again', 'unpaired page hides enable button', 'inactive page cannot enable or submit', 'scoped extraction', 'one submission per unchanged job', 'no implicit clipboard write', 'editable explicit copy', 'collapse', 'clears on job switch', 'blocks stale result before debounce', 'pause revokes pending result', 'recommendation route', 'processed route not resubmitted by navigation interval', 'failed job does not auto-retry after clock advance', 'explicit retry resumes generation','four tones only','changing tone blocks old-tone response','tone hint matches current selection','late getState cannot revert tone selection','Liepin scoped DOM extraction','Zhilian scoped DOM extraction','guest-clamped description not read','panel restored while background state read is pending'], externalRequestsBlocked: blocked.length, screenshot: screenshotPath || null }));
+    console.log(JSON.stringify({ ok: true, assertions: ['paired paused state shows enable button without submitting', 'page enable button starts generation', 'page pause button clears output and stops submission', 'page enable can resume again', 'unpaired page hides enable button', 'inactive page cannot enable or submit', 'scoped extraction', 'one submission per unchanged job', 'no implicit clipboard write', 'editable explicit copy', 'collapse', 'clears on job switch', 'blocks stale result before debounce', 'pause revokes pending result', 'recommendation route', 'processed route not resubmitted by navigation interval', 'failed job does not auto-retry after clock advance', 'explicit retry resumes generation','four tones only','changing tone blocks old-tone response','tone hint matches current selection','late getState cannot revert tone selection','Liepin scoped DOM extraction','Zhilian scoped DOM extraction','guest-clamped description not read','panel restored while background state read is pending','queued and running animation without fictional percentages','completion is 100 percent','pause and error clear progress','reduced motion disables animation'], externalRequestsBlocked: blocked.length, screenshot: screenshotPath || null }));
   } finally {
     socket?.close();
     processHandle.kill();

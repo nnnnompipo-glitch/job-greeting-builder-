@@ -11,7 +11,26 @@
     creative:'用一个贴合岗位的简短巧思切入；避免卖萌和强烈感叹。'
   };
   const eligible = () => Boolean(globalThis.RecruitmentPlatforms?.isSupportedURL(location.href));
-  const status = value => { if (ui) ui.status.textContent = value; };
+  function progress(state = '') {
+    if (!ui) return;
+    const labels = {reading:['读取岗位信息','准备中'],queued:['等待生成招呼语','排队中'],running:['正在生成招呼语','生成中'],done:['招呼语已就绪','已完成']};
+    const label = labels[state];
+    ui.progress.hidden = !label;
+    ui.progress.dataset.state = label ? state : '';
+    ui.greeting.setAttribute('aria-busy', String(Boolean(label && state !== 'done')));
+    if (!label) return;
+    if (ui['progress-label'].textContent !== label[0]) ui['progress-label'].textContent = label[0];
+    ui['progress-stage'].textContent = label[1];
+    ui['progress-bar'].setAttribute('aria-valuetext', label[0]);
+    if (state === 'done') ui['progress-bar'].setAttribute('aria-valuenow', '100');
+    else ui['progress-bar'].removeAttribute('aria-valuenow');
+  }
+  function status(value, state = '') {
+    if (!ui) return;
+    progress(state);
+    ui.status.hidden = !value;
+    ui.status.textContent = value;
+  }
 
   async function ask(action, values = {}) {
     let deadline;
@@ -32,6 +51,7 @@
     pendingId = '';
     failed = false;
     stopPoll();
+    progress();
     if (ui) {
       ui.title.textContent = '';
       ui.greeting.value = '';
@@ -55,6 +75,15 @@
       button{font:inherit;border:0;border-radius:7px;cursor:pointer;padding:7px 11px;background:#087c68;color:white}
       button:disabled{opacity:.45;cursor:default}header button{background:transparent;color:#296c5d;padding:2px 6px;font-size:12px}
       main{padding:13px 14px;max-height:70vh;overflow:auto}p{margin:0 0 9px}.status{font-size:12px;color:#526f64;white-space:pre-wrap}
+      .progress{padding:11px 12px;margin-bottom:12px;border:1px solid #d1e8df;border-radius:10px;background:linear-gradient(135deg,#f0faf5,#fcfffd)}
+      .progress-row{display:flex;align-items:center;justify-content:space-between;gap:8px}.progress-label{font-size:12px;font-weight:600;color:#245b4b}
+      .progress-stage{flex-shrink:0;padding:2px 7px;border-radius:20px;background:#e1f1e9;color:#32765e;font-size:10px;font-weight:600}
+      .progress-track{height:8px;margin-top:10px;overflow:hidden;border-radius:20px;background:#deede6}
+      .progress-fill{display:block;width:40%;height:100%;border-radius:inherit;background:linear-gradient(90deg,#61d4b7,#087c68,#32b99b);animation:greeting-progress 1.8s ease-in-out infinite alternate}
+      .progress[data-state="queued"] .progress-fill{animation-duration:2.6s}.progress[data-state="reading"] .progress-fill{animation-duration:1.3s}
+      .progress[data-state="done"] .progress-fill{width:100%;animation:none;background:#087c68}
+      @keyframes greeting-progress{from{transform:translateX(0)}to{transform:translateX(150%)}}
+      @media(prefers-reduced-motion:reduce){.progress-fill{width:100%;animation:none;background:repeating-linear-gradient(110deg,#7ccbb4 0 8px,#deede6 8px 16px)}}
       .title{font-weight:650;font-size:14px;overflow-wrap:anywhere}.hint{font-size:11px;color:#6c7c75;margin-top:10px;margin-bottom:0}
       textarea{width:100%;min-height:132px;resize:vertical;font:14px/1.65 system-ui,"Microsoft YaHei",sans-serif;padding:10px;border:1px solid #bbd5ca;border-radius:8px;color:#183b34;background:#fcfffd}
       .tone-label{display:block;font-size:12px;font-weight:600;margin-bottom:5px}select{width:100%;font:inherit;padding:7px 9px;border:1px solid #bbd5ca;border-radius:7px;background:#fff;color:#183b34}.tone-hint{font-size:11px;color:#64786c;margin:5px 0 10px}
@@ -68,7 +97,13 @@
     section.innerHTML = '<header><span>招呼语助手</span><button type="button" id="collapse" aria-expanded="true">收起</button></header><main><p class="status" id="status" role="status">正在检查本地助手…</p><label class="tone-label" for="tone">招呼语语气</label><select id="tone" aria-label="选择招呼语语气"><option value="professional">严肃专业</option><option value="friendly">亲和活泼</option><option value="bold">热情夸张</option><option value="creative">灵动巧思</option></select><p class="tone-hint" id="tone-hint"></p><p class="title" id="title"></p><textarea id="greeting" aria-label="可编辑的招呼语" placeholder="打开岗位详情后，招呼语会显示在这里。" spellcheck="false"></textarea><div class="actions"><button type="button" id="copy" disabled>复制招呼语</button><button type="button" id="retry" class="secondary">重新检测</button><button type="button" id="toggle" class="secondary" hidden>开启检测</button></div><details id="details" hidden><summary>查看匹配依据与待确认信息</summary><ul id="matches"></ul><ul id="cautions" class="caution"></ul></details><p class="hint">仅检测当前前台岗位。核对并复制后，请自行到招聘平台发送。</p></main>';
     shadow.append(style, section);
     document.documentElement.appendChild(host);
-    ui = Object.fromEntries(['status', 'title', 'greeting', 'copy', 'retry', 'toggle', 'tone', 'tone-hint', 'collapse', 'matches', 'cautions', 'details'].map(id => [id, shadow.getElementById(id)]));
+    const progressCard = document.createElement('div');
+    progressCard.id = 'progress';
+    progressCard.className = 'progress';
+    progressCard.hidden = true;
+    progressCard.innerHTML = '<div class="progress-row"><span id="progress-label" class="progress-label" role="status"></span><span id="progress-stage" class="progress-stage" aria-hidden="true"></span></div><div id="progress-bar" class="progress-track" role="progressbar" aria-labelledby="progress-label" aria-valuemin="0" aria-valuemax="100"><span class="progress-fill"></span></div>';
+    shadow.getElementById('status').after(progressCard);
+    ui = Object.fromEntries(['status', 'progress', 'progress-label', 'progress-stage', 'progress-bar', 'title', 'greeting', 'copy', 'retry', 'toggle', 'tone', 'tone-hint', 'collapse', 'matches', 'cautions', 'details'].map(id => [id, shadow.getElementById(id)]));
     ui['tone-hint'].textContent=tones.professional;
     ui.tone.addEventListener('change',async () => {
       const selected=ui.tone.value;
@@ -130,7 +165,7 @@
       ui.cautions.append(item);
     }
     ui.details.hidden = !(ui.matches.childElementCount || ui.cautions.childElementCount);
-    status('已生成，可修改后复制。');
+    status('已生成，可修改后复制。', 'done');
   }
   function consume(task, ticket) {
     if (ticket !== epoch) return;
@@ -158,7 +193,7 @@
       status(task.error || '生成失败，请查看本地助手提示。');
     } else if (task.status === 'queued' || task.status === 'running') {
       pendingId = task.id;
-      status(task.status === 'queued' ? '岗位已识别，等待生成…' : '正在结合简历和作品集生成…');
+      status('', task.status);
       pollTimer = setTimeout(() => poll(ticket), 1500);
     } else throw new Error('本地服务返回了未知任务状态。');
   }
@@ -225,7 +260,7 @@
       fingerprint = key;
       ui.title.textContent = `${job.platformLabel ? job.platformLabel+' · ' : ''}${job.company ? `${job.title} · ${job.company}` : job.title}`;
       const ticket = epoch;
-      status('已读取当前岗位，正在提交到本地助手…');
+      status('', 'reading');
       try { consume(await ask('observeJob', { job }), ticket); }
       catch (error) {
         if (ticket !== epoch) return;
