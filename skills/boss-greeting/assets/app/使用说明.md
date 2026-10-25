@@ -4,7 +4,7 @@
 
 浏览器读取你当前打开的岗位详情，结合简历和作品集生成招呼语，由你核对、复制和发送。支持 Windows 10/11、Chrome/Edge、Node.js 22+。
 
-**当前版本为 1.3.2，统一使用 Codex CLI 的 ChatGPT 账号登录方式。无需填写模型地址、模型 ID 或 API Key。** 豆包等具备本地工具的 AI 可以协助安装；实际生成由本机 Codex 完成，不会复用豆包聊天登录，也不要求申请其他模型的 API Key。只有文字聊天能力的客户端可以提供指导，不能据此完成本机安装。
+**当前版本为 1.3.3，统一使用 Codex CLI 的 ChatGPT 账号登录方式。无需填写模型地址、模型 ID 或 API Key。** 豆包等具备本地工具的 AI 可以协助安装；实际生成由本机 Codex 完成，不会复用豆包聊天登录，也不要求申请其他模型的 API Key。只有文字聊天能力的客户端可以提供指导，不能据此完成本机安装。
 
 ## 对 AI 说什么
 
@@ -63,6 +63,8 @@ npx skills add https://github.com/nnnnompipo-glitch/job-greeting-builder- --skil
 
 页面要求登录或展开完整正文时，由用户正常完成；适配不涵盖手机 App。平台改版可能需要调整提取规则。程序不会点击打招呼、投递或发送，不读取聊天、联系人，不批量抓取。
 
+支持从网站首页等入口站内切换到岗位，无需每次刷新。导航等待脚本在三个平台的页面中检查地址与可见状态；仅在允许的岗位路由创建浮窗和读取当前详情，其他页面不读取正文或请求后台。浮窗被网页重绘移除时会自动恢复。
+
 ## 升级与数据
 
 1.3.0 升级会保留个人资料、配对信息和语气。旧版其他模型配置会先备份到本机 `private/`，再迁移为 Codex；不会继续调用旧接口，不会将旧密钥上传到仓库。ChatGPT 登录由 Codex 自己管理，本助手不复制其凭证。
@@ -77,6 +79,6 @@ npx skills add https://github.com/nnnnompipo-glitch/job-greeting-builder- --skil
 node --test tests/*.test.mjs extension/tests/*.test.cjs
 ```
 
-Chrome 139+ 可运行 `node extension/tests/real-extension-qa.cjs`，使用临时浏览器资料目录验证真实 MV3 工具栏弹窗的配对、连接及重启保存。默认在 43127 启动测试服务；若助手已运行，改用 `--pairing-file <助手目录/private/pairing.txt>`，只检查真实服务健康状态，不调用模型或访问招聘页面，不输出配对码。
+Chrome 139+ 可运行 `node extension/tests/real-extension-qa.cjs`，使用临时浏览器资料目录验证真实 MV3 工具栏弹窗的配对、连接及重启保存，并用拦截的本地页面验证三个平台的站内跳转和浮窗恢复。默认在 43127 启动测试服务；若助手已运行，改用 `--pairing-file <助手目录/private/pairing.txt>`，只检查真实服务健康状态，不调用模型或访问真实招聘网站，不输出配对码。
 
 发布时先更新 `CHANGELOG.md`，再运行 `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release.ps1`，同时生成干净源码、带 Node.js 的 Windows 便携包，以及按版本保存的本地快照和校验文件。单独导出仍可使用 `scripts/export-github.ps1`，单独打包使用 `scripts/package.ps1`。Codex 需单独安装和登录；这些脚本不创建 Git 提交或推送。界面检查脚本使用隔离 Chrome 和模拟网页，不使用日常浏览器资料。

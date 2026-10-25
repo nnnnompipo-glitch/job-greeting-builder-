@@ -75,6 +75,8 @@ async function waitFor(expression, timeout = 6000) {
     await waitFor('document.readyState === "complete"');
     await evaluate(`(() => {
       globalThis.__qa = { messages: [], listeners: [], pending: [], copied: [], stateReads: [], state: { enabled: false, paired: true, active: true, tone: 'professional' }, mode: 'instant' };
+      const nativeTimeout=globalThis.setTimeout.bind(globalThis);
+      globalThis.setTimeout=(callback,ms,...args)=>nativeTimeout(callback,ms===15000&&__qa.deadlineDelay?__qa.deadlineDelay:ms,...args);
       const original = Element.prototype.attachShadow;
       Element.prototype.attachShadow = function(options) { const shadow = original.call(this, options); if (this.id === 'boss-local-greeting-helper') __qa.shadow = shadow; return shadow; };
       Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async value => { __qa.copied.push(value); } } });
@@ -211,13 +213,25 @@ async function waitFor(expression, timeout = 6000) {
     })()`);
     assert.equal(platformFixtures.liepin.platform,'liepin');assert.equal(platformFixtures.liepin.company,'猎聘测试公司');
     assert.equal(platformFixtures.zhilian.platform,'zhilian');assert.equal(platformFixtures.zhilian.company,'智联测试公司');assert.equal(platformFixtures.clamped,null);
+    // A site render can remove our root while a background read is still pending.
+    await evaluate('__qa.deferState=true;__qa.stateReads=[];window.dispatchEvent(new Event("focus"))');
+    await waitFor('__qa.stateReads.length>0');
+    await evaluate('document.getElementById("boss-local-greeting-helper").remove()');
+    await waitFor('Boolean(document.getElementById("boss-local-greeting-helper")) && __qa.shadow.host.isConnected');
+    assert.equal(await evaluate('document.querySelectorAll("#boss-local-greeting-helper").length'),1);
+    await evaluate('__qa.deferState=false;__qa.stateReads.forEach(release=>release())');
+    await waitFor('__qa.shadow.querySelector("textarea").value.includes("工业设计师 E")');
+    await evaluate('__qa.deadlineDelay=80;__qa.deferState=true;window.dispatchEvent(new Event("focus"))');
+    await waitFor('__qa.shadow.getElementById("status").textContent.includes("响应超时")');
+    await evaluate('__qa.deferState=false;__qa.deadlineDelay=0;__qa.shadow.getElementById("retry").click()');
+    await waitFor('__qa.shadow.getElementById("status").textContent.includes("已生成")');
     const screenshotPath = process.argv[2];
     if (screenshotPath) {
       const screenshot = await rpc('Page.captureScreenshot', { format: 'png' });
       fs.mkdirSync(path.dirname(path.resolve(screenshotPath)), { recursive: true });
       fs.writeFileSync(screenshotPath, Buffer.from(screenshot.data, 'base64'));
     }
-    console.log(JSON.stringify({ ok: true, assertions: ['paired paused state shows enable button without submitting', 'page enable button starts generation', 'page pause button clears output and stops submission', 'page enable can resume again', 'unpaired page hides enable button', 'inactive page cannot enable or submit', 'scoped extraction', 'one submission per unchanged job', 'no implicit clipboard write', 'editable explicit copy', 'collapse', 'clears on job switch', 'blocks stale result before debounce', 'pause revokes pending result', 'recommendation route', 'processed route not resubmitted by navigation interval', 'failed job does not auto-retry after clock advance', 'explicit retry resumes generation','four tones only','changing tone blocks old-tone response','tone hint matches current selection','late getState cannot revert tone selection','Liepin scoped DOM extraction','Zhilian scoped DOM extraction','guest-clamped description not read'], externalRequestsBlocked: blocked.length, screenshot: screenshotPath || null }));
+    console.log(JSON.stringify({ ok: true, assertions: ['paired paused state shows enable button without submitting', 'page enable button starts generation', 'page pause button clears output and stops submission', 'page enable can resume again', 'unpaired page hides enable button', 'inactive page cannot enable or submit', 'scoped extraction', 'one submission per unchanged job', 'no implicit clipboard write', 'editable explicit copy', 'collapse', 'clears on job switch', 'blocks stale result before debounce', 'pause revokes pending result', 'recommendation route', 'processed route not resubmitted by navigation interval', 'failed job does not auto-retry after clock advance', 'explicit retry resumes generation','four tones only','changing tone blocks old-tone response','tone hint matches current selection','late getState cannot revert tone selection','Liepin scoped DOM extraction','Zhilian scoped DOM extraction','guest-clamped description not read','panel restored while background state read is pending'], externalRequestsBlocked: blocked.length, screenshot: screenshotPath || null }));
   } finally {
     socket?.close();
     processHandle.kill();

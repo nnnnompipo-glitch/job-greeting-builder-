@@ -14,7 +14,14 @@
   const status = value => { if (ui) ui.status.textContent = value; };
 
   async function ask(action, values = {}) {
-    const response = await chrome.runtime.sendMessage({ action, ...values });
+    let deadline;
+    let response;
+    try {
+      response = await Promise.race([
+        chrome.runtime.sendMessage({ action, ...values }),
+        new Promise((_resolve, reject) => { deadline = setTimeout(() => reject(new Error('助手响应超时，请重新检测；若刚更新扩展，请刷新当前岗位页。')), 15000); })
+      ]);
+    } finally { clearTimeout(deadline); }
     if (!response?.ok) throw Object.assign(new Error(response?.error || '扩展已更新，请刷新岗位页。'), { code: response?.code || '' });
     return response.data;
   }
@@ -166,24 +173,30 @@
       status(error.message);
     }
   }
+  // Navigation shells also load this script, but unsupported routes only check
+  // location/visibility. No DOM extraction, observer or runtime request runs there.
+  function reconcilePanel() {
+    if (lastUrl !== location.href) { lastUrl = location.href; clearJob(); }
+    if (!eligible()) {
+      if (host) { clearJob(); host.remove(); host = null; ui = null; }
+      observer?.disconnect();
+      observer = null;
+      return false;
+    }
+    if (document.visibilityState !== 'visible') { stopPoll(); return false; }
+    if (!host?.isConnected) { clearJob(); makePanel(); }
+    if (!observer) {
+      observer = new MutationObserver(() => schedule(host?.isConnected ? 1500 : 0));
+      observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['class', 'style', 'hidden', 'aria-hidden'] });
+    }
+    return true;
+  }
   async function scan() {
-    if (changingTone) return;
+    // Restore the panel even if an earlier asynchronous state read is pending.
+    if (!reconcilePanel() || changingTone) return;
     if (scanning) { scanAgain = true; return; }
     scanning = true;
-    lastUrl = location.href;
     try {
-      if (!eligible()) {
-        if (host) { clearJob(); host.remove(); host = null; ui = null; }
-        observer?.disconnect();
-        observer = null;
-        return;
-      }
-      makePanel();
-      if (!observer) {
-        observer = new MutationObserver(() => schedule(1500));
-        observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['class', 'style', 'hidden', 'aria-hidden'] });
-      }
-      if (document.visibilityState !== 'visible') { stopPoll(); return; }
       const scanEpoch=epoch;
       const config = await ask('getState');
       if (changingTone || scanEpoch !== epoch || !ui || !host?.isConnected || !eligible() || document.visibilityState !== 'visible') return;
@@ -236,9 +249,15 @@
   document.addEventListener('visibilitychange', () => { if (document.visibilityState !== 'visible') stopPoll(); else schedule(0); });
   window.addEventListener('focus', () => schedule(0));
   window.addEventListener('popstate', () => schedule(0));
+  window.addEventListener('pageshow', () => schedule(0));
+  window.addEventListener('hashchange', () => schedule(0));
+  let heartbeatTicks = 0;
   setInterval(() => {
     if (lastUrl !== location.href) { lastUrl = location.href; clearJob(); schedule(0); }
-    else if (document.visibilityState === 'visible') schedule(0);
-  }, 5000);
+    else if (document.visibilityState === 'visible' && eligible() && (!host?.isConnected || ++heartbeatTicks >= 10)) {
+      heartbeatTicks = 0;
+      schedule(0);
+    }
+  }, 500);
   schedule(0);
 })();
