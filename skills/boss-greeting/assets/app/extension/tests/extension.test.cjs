@@ -10,6 +10,7 @@ function element(value = '', queries = {}, options = {}) {
   return {
     innerText: value,
     isConnected: true,
+    classList: { contains: name => Boolean(options.clamped && name === 'describtion-card__detail-content--guest-clamp') },
     querySelectorAll: selector => queries[selector] || [],
     querySelector: selector => (queries[selector] || [])[0] || null,
     closest: selector => (options.hidden && selector.includes('[hidden]')) || (options.list && selector.includes('.job-list')) ? {} : null,
@@ -20,6 +21,7 @@ function element(value = '', queries = {}, options = {}) {
 function extractor() {
   const scope = { URL, getComputedStyle: () => ({ display: 'block', visibility: 'visible', opacity: '1' }) };
   vm.createContext(scope);
+  vm.runInContext(fs.readFileSync(path.join(extension, 'platforms.cjs'), 'utf8'), scope);
   vm.runInContext(fs.readFileSync(path.join(extension, 'extract.js'), 'utf8'), scope);
   return scope.BossJobExtractor.extract;
 }
@@ -52,7 +54,7 @@ test('requires title and complete description inside one visible modal', () => {
   assert.equal(extractor()(fragmented, 'https://www.zhipin.com/web/geek/job'), null);
 });
 
-function background({ active = true, focused = true, enabled = true, response = { id: 'example', status: 'queued' } } = {}) {
+function background({ active = true, focused = true, enabled = true, tabUrl='https://www.zhipin.com/job_detail/example.html', response = { id: 'example', status: 'queued' } } = {}) {
   let listener;
   const requests = [];
   const createdTabs = [];
@@ -62,7 +64,7 @@ function background({ active = true, focused = true, enabled = true, response = 
       local: { setAccessLevel: async () => {}, get: async () => config, set: async data => Object.assign(config, data) },
       onChanged: { addListener: () => {} }
     },
-    tabs: { get: async () => ({ active, windowId: 1, url: 'https://www.zhipin.com/job_detail/example.html' }), query: async () => [], sendMessage: async () => {}, create: async options => { createdTabs.push(options); return { id: 2 }; } },
+    tabs: { get: async () => ({ active, windowId: 1, url: tabUrl }), query: async () => [], sendMessage: async () => {}, create: async options => { createdTabs.push(options); return { id: 2 }; } },
     windows: { get: async () => ({ focused }) },
     runtime: { getURL: file => `chrome-extension://test/${file}`, onMessage: { addListener: fn => { listener = fn; } } }
   };
@@ -71,10 +73,19 @@ function background({ active = true, focused = true, enabled = true, response = 
     fetch: async (url, options) => {
       requests.push({ url, options });
       if (config.revokeDuringRequest) config.enabled = false;
+      if (url.endsWith('/api/preferences')) {
+        if (options.method === 'GET' && config.deferPreferences) {
+          const snapshot={tone:config.tone || 'professional'};
+          return new Promise(resolve=>{config.releasePreferences=()=>resolve({ok:true,json:async()=>snapshot});});
+        }
+        if (options.method === 'PUT') config.tone=JSON.parse(options.body).tone;
+        return {ok:true,json:async()=>({tone:config.tone || 'professional'})};
+      }
       return { ok: true, json: async () => response };
     }
   };
   vm.createContext(scope);
+  vm.runInContext(fs.readFileSync(path.join(extension, 'platforms.cjs'), 'utf8'), scope);
   vm.runInContext(fs.readFileSync(path.join(extension, 'background.js'), 'utf8'), scope);
   return {
     requests,
@@ -108,11 +119,12 @@ test('content state never includes pairing token; only cleaned job fields go to 
   assert.equal('token' in state.data, false);
   const submitted = await runner.send({ action: 'observeJob', job: { ...job, cookie: 'must not leave', chats: 'must not leave' } });
   assert.equal(submitted.ok, true);
-  assert.equal(runner.requests[0].url, 'http://127.0.0.1:43127/api/jobs');
-  const payload = JSON.parse(runner.requests[0].options.body);
+  const submittedRequest=runner.requests.find(item=>item.url.endsWith('/api/jobs'));
+  assert.equal(submittedRequest.url, 'http://127.0.0.1:43127/api/jobs');
+  const payload = JSON.parse(submittedRequest.options.body);
   assert.equal('cookie' in payload, false);
   assert.equal('chats' in payload, false);
-  assert.equal(runner.requests[0].options.credentials, 'omit');
+  assert.equal(submittedRequest.options.credentials, 'omit');
 });
 
 test('revoking monitoring while localhost responds blocks the response', async () => {
@@ -145,7 +157,7 @@ test('foreground paired page can explicitly enable monitoring and pause it again
   assert.equal(paused.ok, true);
   assert.equal(paused.data.enabled, false);
   assert.equal(runner.config.enabled, false);
-  assert.equal(runner.requests.length, 0);
+  assert.equal(runner.requests.filter(item=>item.url.endsWith('/api/jobs')).length, 0);
 });
 
 test('monitoring enable rejects unpaired, inactive, unfocused, and malformed requests', async () => {
@@ -276,4 +288,55 @@ test('popup model button opens the trusted settings page',async () => {
   await new Promise(resolve => setImmediate(resolve));
   await runner.elements['model-settings'].emit('click');
   assert.equal(runner.messages.at(-1).action,'openSettings');
+});
+
+test('paired foreground pages save one of four tones without receiving profile or model secrets',async()=>{
+  const runner=background({enabled:false});
+  for(const tone of ['professional','friendly','bold','creative']) {
+    const result=await runner.send({action:'setTone',tone});
+    assert.equal(result.ok,true);assert.equal(result.data.tone,tone);
+    assert.equal('token' in result.data,false);assert.equal('profile' in result.data,false);
+  }
+  assert.equal((await runner.send({action:'getState'})).data.tone,'creative');
+  assert.equal((await runner.send({action:'setTone',tone:'invented'})).ok,false);
+  const denied=background({active:false});
+  assert.equal((await denied.send({action:'setTone',tone:'bold'})).ok,false);
+  assert.equal(denied.requests.length,0);
+});
+
+test('other recruitment platforms submit scoped jobs and reject cross-platform stale senders',async()=>{
+  for(const url of ['https://www.liepin.com/job/1986231537.shtml','https://www.zhaopin.com/jobdetail/CC585435125J00668996301.htm']) {
+    const runner=background({tabUrl:url});
+    const response=await runner.send({action:'observeJob',job:{...job,url}},{tab:{id:1},frameId:0,url});
+    assert.equal(response.ok,true);assert.equal(runner.requests[0].url,'http://127.0.0.1:43127/api/jobs');
+  }
+  const changed=background({tabUrl:'https://www.liepin.com/job/1986231537.shtml'});
+  assert.equal((await changed.send({action:'observeJob',job})).ok,false);assert.equal(changed.requests.length,0);
+});
+
+test('file import is limited to trusted settings page and forwards only document payload',async()=>{
+  const runner=background(), payload={action:'importDocument',filename:'resume.png',type:'image/png',base64:'aGVsbG8=',cookie:'do-not-forward'};
+  assert.equal((await runner.send(payload)).ok,false);assert.equal(runner.requests.length,0);
+  const response=await runner.send(payload,{tab:{id:2},frameId:0,url:'chrome-extension://test/settings.html'});
+  assert.equal(response.ok,true);
+  const sent=runner.requests[0];assert.equal(sent.url,'http://127.0.0.1:43127/api/imports');
+  assert.deepEqual(JSON.parse(sent.options.body),{filename:'resume.png',type:'image/png',base64:'aGVsbG8='});
+  assert.equal((await runner.send({...payload,filename:'../secret.png'},{tab:{id:2},frameId:0,url:'chrome-extension://test/settings.html'})).ok,false);
+});
+
+test('late preference reads cannot overwrite a newer tone save',async()=>{
+  for(const method of ['setTone','saveModelSettings']) {
+    const runner=background({response:{model:{provider:'codex'},preferences:{tone:'creative'}}});
+    runner.config.deferPreferences=true;
+    const oldState=runner.send({action:'getState'});
+    await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(typeof runner.config.releasePreferences,'function');
+    const changed=method==='setTone'
+      ? await runner.send({action:'setTone',tone:'creative'})
+      : await runner.send({action:'saveModelSettings',model:{provider:'codex'},preferences:{tone:'creative'}},{tab:{id:2},frameId:0,url:'chrome-extension://test/settings.html'});
+    assert.equal(changed.ok,true);
+    runner.config.deferPreferences=false;runner.config.releasePreferences();
+    assert.equal((await oldState).data.tone,'creative');
+    assert.equal((await runner.send({action:'getState'})).data.tone,'creative');
+  }
 });

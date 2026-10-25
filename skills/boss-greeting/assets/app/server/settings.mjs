@@ -2,6 +2,7 @@ import { readFile, writeFile, rename, mkdir, copyFile, unlink } from 'node:fs/pr
 import { randomUUID, createHash } from 'node:crypto';
 import path from 'node:path';
 import { normalizeModelSettings, publicModelSettings, testModelConnection } from './providers.mjs';
+import { normalizePreferences } from './core.mjs';
 
 export function isProfileReady(profile) {
   return typeof profile === 'string' && profile.trim().length >= 80 && !profile.includes('<!-- PROFILE_NOT_CONFIGURED -->');
@@ -31,6 +32,7 @@ export class SettingsStore {
     this.profilePath = path.join(root,'private','profile.md'); this.writes = Promise.resolve();
   }
   model() { return normalizeModelSettings(this.config.model || {provider:'codex',timeoutMs:this.config.timeoutMs || 120000}, {allowIncomplete:true}); }
+  preferences() { return normalizePreferences(this.config.preferences); }
   async profile() {
     try { return (await readFile(this.profilePath,'utf8')).replace(/^\uFEFF/,''); }
     catch(error) { if (error.code === 'ENOENT') return ''; throw new Error('无法读取本机个人资料'); }
@@ -38,7 +40,7 @@ export class SettingsStore {
   async ready() { return isProfileReady(await this.profile()); }
   async get() {
     const profile = await this.profile();
-    return {model:publicModelSettings(this.model()),profile,profileReady:isProfileReady(profile)};
+    return {model:publicModelSettings(this.model()),preferences:this.preferences(),profile,profileReady:isProfileReady(profile)};
   }
   prepareModel(input) {
     if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('模型设置格式不正确');
@@ -51,10 +53,11 @@ export class SettingsStore {
   }
   async update(body) {
     const operation = this.writes.then(async () => {
-      if (!body || typeof body !== 'object' || Array.isArray(body) || (!('model' in body) && !('profile' in body))) throw new Error('请提供模型设置或个人资料');
+      if (!body || typeof body !== 'object' || Array.isArray(body) || (!('model' in body) && !('profile' in body) && !('preferences' in body))) throw new Error('请提供模型设置、个人资料或语气偏好');
       if ('profile' in body && (typeof body.profile !== 'string' || body.profile.length > 60000)) throw new Error('个人资料需要为文字，且不能超过60000字符');
       const next = {...this.config};
       if ('model' in body) next.model = this.prepareModel(body.model);
+      if ('preferences' in body) next.preferences = normalizePreferences(body.preferences);
       if ('profile' in body) await atomicWrite(this.profilePath, body.profile);
       await atomicWrite(this.configPath, JSON.stringify(next,null,2));
       this.config = next;
@@ -73,7 +76,8 @@ export class SettingsStore {
     const profile = await this.profile();
     if (!isProfileReady(profile)) throw new Error('请在“模型与个人资料设置”中填写真实资料，并删除模板首行占位标记');
     const model = this.model();
-    const cacheKey = createHash('sha256').update(JSON.stringify(model)).digest('hex');
-    return {profile,cacheKey,config:{...this.config,model,root:this.root}};
+    const preferences = this.preferences();
+    const cacheKey = createHash('sha256').update(JSON.stringify({model,preferences})).digest('hex');
+    return {profile,preferences,cacheKey,config:{...this.config,model,preferences,root:this.root}};
   }
 }

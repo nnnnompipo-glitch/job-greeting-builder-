@@ -1,4 +1,4 @@
 interface:
-  display_name: "BOSS 招呼语助手"
-  short_description: "从 GitHub 安装岗位草稿助手，复用允许使用的模型连接，结合个人材料生成招呼语"
-  default_prompt: "用 $boss-greeting 安装并配置本机岗位招呼语助手，优先复用我允许使用的当前模型连接，生成后由我手动发送。"
+  display_name: "求职招呼语助手"
+  short_description: "支持BOSS、猎聘和智联，导入图片与PDF，选择四种语气并用允许的模型生成草稿"
+  default_prompt: "用 $boss-greeting 安装并配置本机求职招呼语助手，导入我的个人材料并选择语气，优先复用我允许使用的模型连接，生成后由我手动发送。"

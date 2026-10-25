@@ -12,10 +12,10 @@ import { detectHostModel, configureHost, redactDetection } from './configure-hos
 const defaultRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const runtimeFiles = [
   'package.json','启动助手.cmd','停止助手.cmd',
-  'server/core.mjs','server/http.mjs','server/index.mjs','server/model.mjs','server/providers.mjs','server/settings.mjs','server/greeting.schema.json',
-  'extension/manifest.json','extension/background.js','extension/extract.js','extension/content.js',
+  'server/core.mjs','server/http.mjs','server/index.mjs','server/model.mjs','server/providers.mjs','server/settings.mjs','server/imports.mjs','server/greeting.schema.json',
+  'extension/manifest.json','extension/platforms.cjs','extension/background.js','extension/extract.js','extension/content.js',
   'extension/popup.html','extension/popup.js','extension/popup.css','extension/settings.html','extension/settings.js','extension/settings.css',
-  'scripts/install.mjs','scripts/configure-host.mjs','scripts/bootstrap.ps1','scripts/start.ps1','scripts/stop.ps1',
+  'scripts/install.mjs','scripts/configure-host.mjs','scripts/bootstrap.ps1','scripts/start.ps1','scripts/stop.ps1','scripts/import-document.ps1',
   'templates/config.default.json','templates/profile.example.md'
 ];
 function failure(message) {return Object.assign(new Error(message),{publicMessage:message});}

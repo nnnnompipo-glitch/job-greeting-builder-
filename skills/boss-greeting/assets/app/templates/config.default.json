@@ -8,5 +8,8 @@
     "apiKey": "",
     "responseFormat": "auto",
     "timeoutMs": 120000
+  },
+  "preferences": {
+    "tone": "professional"
   }
 }

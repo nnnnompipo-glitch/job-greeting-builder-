@@ -1,5 +1,6 @@
 /* This helper reads only known, visible job-detail roots. It never reads body text. */
 (() => {
+  const registry = globalThis.RecruitmentPlatforms;
   const TITLE = ['.job-name', '.name h1', '.job-title', 'h1'];
   const DESCRIPTION = ['.job-sec-text', '.job-detail-body .text', '.job-detail .job-description', '[data-job-description]'];
   function visible(element) {
@@ -40,9 +41,7 @@
       requirements: first(root, ['.job-limit', '.job-require', '.job-primary .info-primary p'], 1000)
     };
   }
-  function extract(doc = document, url = location.href) {
-    const address = new URL(url);
-    if (address.origin !== 'https://www.zhipin.com') return null;
+  function boss(doc, address) {
     const detailPage = /^\/job_detail\/[\w-]+\.html$/.test(address.pathname);
     const searchPage = /^\/web\/geek\/(?:job|job-recommend)\/?$/.test(address.pathname);
     if (!detailPage && !searchPage) return null;
@@ -59,5 +58,49 @@
     }
     return null;
   }
-  globalThis.BossJobExtractor = { extract };
+  function unique(root, selector) {
+    const values = [...root.querySelectorAll(selector)].filter(visible);
+    return values.length === 1 ? values[0] : null;
+  }
+  function liepin(doc, identified) {
+    // The verified desktop page uses separate, uniquely scoped header and intro sections.
+    const header = unique(doc, '.job-apply-container');
+    const details = unique(doc, '.job-apply-container-desc .job-intro-container');
+    if (!header || !details || header.closest('.job-list,.job-list-item') || details.closest('.job-list,.job-list-item')) return null;
+    const title = first(header, ['.name-box .name'], 160);
+    const description = first(details, ['[data-selector="job-intro-content"]'], 18000);
+    if (!title || description.length < 30) return null;
+    return {
+      url: identified.canonicalUrl, title, description,
+      company: first(doc, ['.company-info-container .company-card .content .name'], 160),
+      salary: first(header, ['.salary'], 100), requirements: first(header, ['.job-properties'], 1000)
+    };
+  }
+  function zhilian(doc, identified) {
+    const root = unique(doc, '.main-jobs');
+    if (!root || root.closest('.job-list,.chat-conversation,.chat-record')) return null;
+    const descriptions = [...root.querySelectorAll('.describtion-card__detail-content')].filter(visible);
+    // Guest-clamped descriptions are intentionally incomplete in the visible site UI.
+    const complete = descriptions.filter(element => !element.classList?.contains('describtion-card__detail-content--guest-clamp'));
+    if (complete.length !== 1) return null;
+    const title = first(root, ['.job-summary .summary-planes__title', '.summary-planes__title'], 160);
+    const description = text(complete[0],18000);
+    if (!title || description.length < 30) return null;
+    return {
+      url: identified.canonicalUrl, title, description,
+      company: first(root, ['.company-info__name', '.company-summary__name-link'], 160),
+      salary: first(root, ['.summary-planes__salary'], 100),
+      requirements: first(root, ['.summary-planes__info'], 1000)
+    };
+  }
+  function extract(doc = document, url = location.href) {
+    const identified = registry?.identifyJobURL(url);
+    if (!identified) return null;
+    let result;
+    if (identified.id === 'boss') result = boss(doc,new URL(url));
+    else if (identified.id === 'liepin') result = liepin(doc,identified);
+    else if (identified.id === 'zhilian') result = zhilian(doc,identified);
+    return result ? {...result, platform:identified.id,platformLabel:identified.label} : null;
+  }
+  globalThis.BossJobExtractor = globalThis.RecruitmentJobExtractor = { extract };
 })();

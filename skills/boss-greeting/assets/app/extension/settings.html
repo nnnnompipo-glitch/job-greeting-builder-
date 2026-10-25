@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>模型与个人资料 · BOSS 招呼语助手</title>
+  <title>模型与个人资料 · 求职招呼语助手</title>
   <link rel="stylesheet" href="settings.css">
 </head>
 <body>
   <main>
-    <header><span class="eyebrow">BOSS 招呼语助手</span><h1>模型与个人资料</h1><p>选用你自己的模型，结合真实经历生成岗位招呼语。</p></header>
+    <header><span class="eyebrow">求职招呼语助手</span><h1>模型与个人资料</h1><p>适用于 BOSS 直聘、猎聘与智联招聘网页版，结合真实经历生成岗位招呼语。</p></header>
     <output id="status" role="status" aria-live="polite">正在读取本地设置…</output>
     <form id="settings-form">
       <fieldset id="fields" disabled>
@@ -46,8 +46,29 @@
           <button id="test-model" class="secondary" type="button">测试模型连接</button>
           <p class="help">测试仅发送简短的模拟请求，不发送你的个人资料或真实岗位。</p>
         </section>
+        <section aria-labelledby="tone-title">
+          <div class="section-heading"><span class="step">2</span><div><h2 id="tone-title">选择招呼语语气</h2><p>只改变表达方式，经历、能力和成果始终以真实资料为准。</p></div></div>
+          <label for="tone">默认语气</label>
+          <select id="tone"><option value="professional">严肃专业</option><option value="friendly">亲和活泼</option><option value="bold">热情夸张</option><option value="creative">灵动巧思</option></select>
+          <p id="tone-help" class="notice"></p>
+          <dl class="tone-guide"><dt>严肃专业</dt><dd>客观简洁，正式陈述，不用感叹或比喻。</dd><dt>亲和活泼</dt><dd>像自然聊天一样亲近友好，不用夸张修辞。</dd><dt>热情夸张</dt><dd>突出强烈兴趣与行动意愿，表达有张力，事实不夸大。</dd><dt>灵动巧思</dt><dd>用一句贴合行业的巧思或比喻开头，保持克制。</dd></dl>
+        </section>
         <section aria-labelledby="profile-title">
-          <div class="section-heading"><span class="step">2</span><div><h2 id="profile-title">个人经历与作品集依据</h2><p>填写专业、求职地区、项目、软件和实际成果。保留明确来源，避免写入电话、微信等联系方式。</p></div></div>
+          <div class="section-heading"><span class="step">3</span><div><h2 id="profile-title">个人经历与作品集依据</h2><p>填写专业、求职地区、项目、软件和实际成果。保留明确来源，避免写入电话、微信等联系方式。</p></div></div>
+          <div class="import-box">
+            <label for="documents">从简历或作品集导入</label>
+            <input id="documents" type="file" accept=".pdf,.png,.jpg,.jpeg,.bmp,.txt,.md" multiple>
+            <p class="help">支持 PDF、PNG、JPG、BMP、TXT、Markdown，每个文件最多 25 MB；PDF 最多识别前 40 页。图片与扫描 PDF 使用本机文字识别。</p>
+            <button id="import-files" type="button" class="secondary">识别选中的文件</button>
+            <output id="import-status" class="import-status" role="status" aria-live="polite">识别结果先显示在下方，确认后再加入个人资料。</output>
+            <div id="import-review" hidden>
+              <label for="import-preview">识别结果（可修改后确认）</label>
+              <textarea id="import-preview" rows="10" spellcheck="false"></textarea>
+              <p id="import-warnings" class="help"></p>
+              <p class="help">请核对识别出的姓名、日期、项目职责和数字，并区分个人作品与参考素材。确认后的文字才会在保存后用于所选模型生成。</p>
+              <button id="append-import" type="button" class="secondary">确认并加入个人资料</button>
+            </div>
+          </div>
           <label for="profile">用于生成的个人资料</label>
           <textarea id="profile" rows="15" spellcheck="false" placeholder="例如：工业设计本科，求职地区为杭州及周边。做过哪些项目、负责哪些环节，熟悉哪些软件和工艺。"></textarea>
           <p id="profile-note" class="help"></p>

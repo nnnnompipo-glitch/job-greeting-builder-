@@ -27,18 +27,18 @@ $buildId = (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + ([Guid]::NewGuid().ToStr
 $stageRoot = Join-Path $distRoot ('staging-' + $buildId)
 $packageRoot = Join-Path $stageRoot 'BOSS-Greeting-Helper'
 New-Item -ItemType Directory -Path $packageRoot -Force | Out-Null
-$zipPath = Join-Path $distRoot 'BOSS-Greeting-Helper-1.1.0-Windows.zip'
-if (Test-Path -LiteralPath $zipPath) { $zipPath = Join-Path $distRoot ('BOSS-Greeting-Helper-1.1.0-Windows-' + $buildId + '.zip') }
+$zipPath = Join-Path $distRoot 'BOSS-Greeting-Helper-1.2.0-Windows.zip'
+if (Test-Path -LiteralPath $zipPath) { $zipPath = Join-Path $distRoot ('BOSS-Greeting-Helper-1.2.0-Windows-' + $buildId + '.zip') }
 
 # Only these source paths enter the package. Never recurse through the workspace.
 $relativeFiles = @(
     '启动助手.cmd', '停止助手.cmd',
-    'scripts\start.ps1', 'scripts\stop.ps1',
+    'scripts\start.ps1', 'scripts\stop.ps1', 'scripts\import-document.ps1',
     'templates\config.default.json', 'templates\profile.example.md',
-    'extension\manifest.json', 'extension\background.js', 'extension\extract.js', 'extension\content.js',
+    'extension\manifest.json', 'extension\platforms.cjs', 'extension\background.js', 'extension\extract.js', 'extension\content.js',
     'extension\popup.html', 'extension\popup.js', 'extension\popup.css',
     'extension\settings.html', 'extension\settings.js', 'extension\settings.css',
-    'server\core.mjs', 'server\http.mjs', 'server\index.mjs', 'server\model.mjs', 'server\providers.mjs',
+    'server\core.mjs', 'server\http.mjs', 'server\index.mjs', 'server\model.mjs', 'server\providers.mjs', 'server\imports.mjs',
     'server\greeting.schema.json'
 )
 # Additional runtime modules must be added explicitly when the server is extended.
@@ -58,10 +58,10 @@ try {
     Copy-Item -LiteralPath $RuntimeLicensePath -Destination (Join-Path $runtimeTarget 'LICENSE.txt')
     $runtimeNotice = 'Node.js ' + $runtimeIdentity.version + ' Windows x64. License source: https://github.com/nodejs/node/blob/' + $runtimeIdentity.version + '/LICENSE'
     [IO.File]::WriteAllText((Join-Path $runtimeTarget 'SOURCE.txt'),$runtimeNotice,(New-Object Text.UTF8Encoding $false))
-    $packageMetadata = [ordered]@{name='boss-greeting-helper';version='1.1.0';private=$true;type='module';scripts=@{start='node server/index.mjs'};engines=@{node='>=22'}}
+    $packageMetadata = [ordered]@{name='boss-greeting-helper';version='1.2.0';private=$true;type='module';scripts=@{start='node server/index.mjs'};engines=@{node='>=22'}}
     [IO.File]::WriteAllText((Join-Path $packageRoot 'package.json'),($packageMetadata | ConvertTo-Json -Depth 5),(New-Object Text.UTF8Encoding $false))
     $runtimeSha = (Get-FileHash -LiteralPath (Join-Path $runtimeTarget 'node.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
-    $manifest = [ordered]@{version='1.1.0';builtAt=(Get-Date).ToUniversalTime().ToString('o');runtimeVersion=$runtimeIdentity.version;runtimeSha256=$runtimeSha;personalDataIncluded=$false;sourceFiles=$relativeFiles}
+    $manifest = [ordered]@{version='1.2.0';builtAt=(Get-Date).ToUniversalTime().ToString('o');runtimeVersion=$runtimeIdentity.version;runtimeSha256=$runtimeSha;personalDataIncluded=$false;sourceFiles=$relativeFiles}
     [IO.File]::WriteAllText((Join-Path $packageRoot 'package-manifest.json'),($manifest | ConvertTo-Json -Depth 6),(New-Object Text.UTF8Encoding $false))
     Compress-Archive -LiteralPath $packageRoot -DestinationPath $zipPath -CompressionLevel Optimal
     Add-Type -AssemblyName System.IO.Compression.FileSystem

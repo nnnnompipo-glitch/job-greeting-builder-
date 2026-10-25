@@ -3,8 +3,14 @@
   globalThis.__bossGreetingHelperLoaded = true;
   let host, ui, observer, scanTimer, maxTimer, pollTimer;
   let fingerprint = '', epoch = 0, pendingId = '', scanning = false, scanAgain = false;
-  let failed = false, lastUrl = location.href;
-  const eligible = () => /^\/job_detail\/[\w-]+\.html$/.test(location.pathname) || /^\/web\/geek\/(?:job|job-recommend)\/?$/.test(location.pathname);
+  let failed = false, lastUrl = location.href, changingTone = false;
+  const tones = {
+    professional:'客观克制，以项目和能力为主；不使用感叹或比喻。',
+    friendly:'自然口语，亲近有礼；不使用夸张或比喻。',
+    bold:'热情有张力，强调主观意愿；事实、能力和成果不夸张。',
+    creative:'用一个贴合岗位的简短巧思切入；避免卖萌和强烈感叹。'
+  };
+  const eligible = () => Boolean(globalThis.RecruitmentPlatforms?.isSupportedURL(location.href));
   const status = value => { if (ui) ui.status.textContent = value; };
 
   async function ask(action, values = {}) {
@@ -44,17 +50,28 @@
       main{padding:13px 14px;max-height:70vh;overflow:auto}p{margin:0 0 9px}.status{font-size:12px;color:#526f64;white-space:pre-wrap}
       .title{font-weight:650;font-size:14px;overflow-wrap:anywhere}.hint{font-size:11px;color:#6c7c75;margin-top:10px;margin-bottom:0}
       textarea{width:100%;min-height:132px;resize:vertical;font:14px/1.65 system-ui,"Microsoft YaHei",sans-serif;padding:10px;border:1px solid #bbd5ca;border-radius:8px;color:#183b34;background:#fcfffd}
+      .tone-label{display:block;font-size:12px;font-weight:600;margin-bottom:5px}select{width:100%;font:inherit;padding:7px 9px;border:1px solid #bbd5ca;border-radius:7px;background:#fff;color:#183b34}.tone-hint{font-size:11px;color:#64786c;margin:5px 0 10px}
       .actions{display:flex;gap:8px;margin-top:10px}.secondary{background:#eaf1ee;color:#306052}
       details{font-size:12px;margin-top:12px;color:#4d685d}summary{cursor:pointer}ul{padding-left:18px;margin:8px 0}li{margin:5px 0;overflow-wrap:anywhere}.caution{color:#8b6534}
       [hidden]{display:none!important}
     `;
     const section = document.createElement('section');
-    section.setAttribute('aria-label', 'BOSS 招呼语助手');
+    section.setAttribute('aria-label', '求职招呼语助手');
     // Static extension markup only. Job and generated text are assigned with textContent/value.
-    section.innerHTML = '<header><span>招呼语助手</span><button type="button" id="collapse" aria-expanded="true">收起</button></header><main><p class="status" id="status" role="status">正在检查本地助手…</p><p class="title" id="title"></p><textarea id="greeting" aria-label="可编辑的招呼语" placeholder="打开岗位详情后，招呼语会显示在这里。" spellcheck="false"></textarea><div class="actions"><button type="button" id="copy" disabled>复制招呼语</button><button type="button" id="retry" class="secondary">重新检测</button><button type="button" id="toggle" class="secondary" hidden>开启检测</button></div><details id="details" hidden><summary>查看匹配依据与待确认信息</summary><ul id="matches"></ul><ul id="cautions" class="caution"></ul></details><p class="hint">仅检测当前前台岗位。复制后，请自行到 BOSS 发送。</p></main>';
+    section.innerHTML = '<header><span>招呼语助手</span><button type="button" id="collapse" aria-expanded="true">收起</button></header><main><p class="status" id="status" role="status">正在检查本地助手…</p><label class="tone-label" for="tone">招呼语语气</label><select id="tone" aria-label="选择招呼语语气"><option value="professional">严肃专业</option><option value="friendly">亲和活泼</option><option value="bold">热情夸张</option><option value="creative">灵动巧思</option></select><p class="tone-hint" id="tone-hint"></p><p class="title" id="title"></p><textarea id="greeting" aria-label="可编辑的招呼语" placeholder="打开岗位详情后，招呼语会显示在这里。" spellcheck="false"></textarea><div class="actions"><button type="button" id="copy" disabled>复制招呼语</button><button type="button" id="retry" class="secondary">重新检测</button><button type="button" id="toggle" class="secondary" hidden>开启检测</button></div><details id="details" hidden><summary>查看匹配依据与待确认信息</summary><ul id="matches"></ul><ul id="cautions" class="caution"></ul></details><p class="hint">仅检测当前前台岗位。核对并复制后，请自行到招聘平台发送。</p></main>';
     shadow.append(style, section);
     document.documentElement.appendChild(host);
-    ui = Object.fromEntries(['status', 'title', 'greeting', 'copy', 'retry', 'toggle', 'collapse', 'matches', 'cautions', 'details'].map(id => [id, shadow.getElementById(id)]));
+    ui = Object.fromEntries(['status', 'title', 'greeting', 'copy', 'retry', 'toggle', 'tone', 'tone-hint', 'collapse', 'matches', 'cautions', 'details'].map(id => [id, shadow.getElementById(id)]));
+    ui['tone-hint'].textContent=tones.professional;
+    ui.tone.addEventListener('change',async () => {
+      const selected=ui.tone.value;
+      if (!Object.hasOwn(tones,selected)) return;
+      changingTone=true;ui.tone.disabled=true;clearJob();
+      ui['tone-hint'].textContent=tones[selected];status('正在保存语气，随后重新生成当前岗位草稿…');
+      try {await ask('setTone',{tone:selected});}
+      catch(error) {status(error.message);}
+      finally {changingTone=false;if(ui)ui.tone.disabled=false;schedule(0);}
+    });
     ui.collapse.addEventListener('click', () => {
       const main = shadow.querySelector('main');
       main.hidden = !main.hidden;
@@ -150,6 +167,7 @@
     }
   }
   async function scan() {
+    if (changingTone) return;
     if (scanning) { scanAgain = true; return; }
     scanning = true;
     lastUrl = location.href;
@@ -166,7 +184,11 @@
         observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['class', 'style', 'hidden', 'aria-hidden'] });
       }
       if (document.visibilityState !== 'visible') { stopPoll(); return; }
+      const scanEpoch=epoch;
       const config = await ask('getState');
+      if (changingTone || scanEpoch !== epoch || !ui || !host?.isConnected || !eligible() || document.visibilityState !== 'visible') return;
+      const tone=Object.hasOwn(tones,config.tone) ? config.tone : 'professional';
+      ui.tone.value=tone;ui['tone-hint'].textContent=tones[tone];
       ui.toggle.hidden = !config.paired;
       ui.toggle.textContent = config.enabled ? '暂停检测' : '开启检测';
       if (!config.enabled) {
@@ -178,7 +200,7 @@
       const job = globalThis.BossJobExtractor.extract();
       if (!job) {
         if (fingerprint) clearJob();
-        status('等待打开完整岗位详情。页面结构未识别时，可将岗位要求复制到聊天中。');
+        status('等待完整岗位详情。请在平台正常展开职责或登录查看；未识别时可复制岗位文字到聊天中。');
         return;
       }
       const key = JSON.stringify(job);
@@ -188,7 +210,7 @@
       }
       clearJob();
       fingerprint = key;
-      ui.title.textContent = job.company ? `${job.title} · ${job.company}` : job.title;
+      ui.title.textContent = `${job.platformLabel ? job.platformLabel+' · ' : ''}${job.company ? `${job.title} · ${job.company}` : job.title}`;
       const ticket = epoch;
       status('已读取当前岗位，正在提交到本地助手…');
       try { consume(await ask('observeJob', { job }), ticket); }

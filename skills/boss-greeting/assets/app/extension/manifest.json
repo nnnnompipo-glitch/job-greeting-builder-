@@ -1,17 +1,17 @@
 {
   "manifest_version": 3,
-  "name": "BOSS 招呼语助手（手动发送）",
-  "version": "1.1.0",
+  "name": "求职招呼语助手（手动发送）",
+  "version": "1.2.0",
   "minimum_chrome_version": "103",
-  "description": "读取当前可见岗位详情，结合本地资料生成招呼语，由你复制和发送。",
+  "description": "检测 BOSS、猎聘、智联当前岗位，结合个人资料和所选语气生成草稿，由你手动发送。",
   "permissions": ["storage"],
-  "host_permissions": ["https://www.zhipin.com/*", "http://127.0.0.1:43127/*"],
+  "host_permissions": ["https://www.zhipin.com/*", "https://www.liepin.com/*", "https://www.zhaopin.com/*", "https://jobs.zhaopin.com/*", "http://127.0.0.1:43127/*"],
   "background": { "service_worker": "background.js" },
-  "action": { "default_popup": "popup.html", "default_title": "BOSS 招呼语助手" },
+  "action": { "default_popup": "popup.html", "default_title": "求职招呼语助手" },
   "content_scripts": [{
-    "matches": ["https://www.zhipin.com/*"],
+    "matches": ["https://www.zhipin.com/job_detail/*", "https://www.zhipin.com/web/geek/job*", "https://www.liepin.com/job/*", "https://www.liepin.com/a/*", "https://www.zhaopin.com/jobdetail/*", "https://jobs.zhaopin.com/*"],
     "exclude_matches": ["https://www.zhipin.com/web/geek/chat*", "https://www.zhipin.com/web/chat*"],
-    "js": ["extract.js", "content.js"],
+    "js": ["platforms.cjs", "extract.js", "content.js"],
     "run_at": "document_idle",
     "all_frames": false
   }]

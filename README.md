@@ -1,6 +1,20 @@
 # BOSS Greeting Skill
 
-让支持本地工具的 AI 助手安装并启动 BOSS 岗位招呼语助手。浏览器读取你当前打开的岗位详情，结合你自己的经历生成草稿，由你核对、复制和发送。
+让支持本地工具的 AI 助手安装并启动求职招呼语助手。浏览器读取你当前打开的岗位详情，结合你自己的经历生成草稿，由你核对、复制和发送。
+
+## 1.2 功能
+
+- 四档语气：严肃专业、亲和活泼、热情夸张、灵动巧思。可在岗位浮窗快速切换，或在设置页保存默认值。表达规则区分客观陈述、自然口语、强烈热情和单句巧思；事实与能力不因语气夸大。
+- 文件导入：PDF、PNG/JPG/JPEG/BMP、UTF-8 TXT/MD。图片与PDF在本机使用Windows文字识别，先预览并编辑，再确认加入个人资料；不会自动覆盖已保存资料。每个文件25MiB，PDF最多40页。
+- 网页岗位适配：BOSS直聘、猎聘、智联招聘。只处理当前前台的详情正文，不读取职位列表、聊天或未展开的受限内容。
+
+| 平台 | 支持的网页详情 |
+| --- | --- |
+| BOSS直聘 | `www.zhipin.com/job_detail/…`，以及搜索页已打开的详情浮层 |
+| 猎聘 | `www.liepin.com/job/…shtml`、`www.liepin.com/a/…shtml` |
+| 智联招聘 | `www.zhaopin.com/jobdetail/…htm`，及旧版 `jobs.zhaopin.com/…htm` |
+
+平台改版可能影响选择器。页面要求登录或展开完整描述时，请正常操作后再检测；该适配针对网页版。
 
 支持 Windows 10/11、Chrome/Edge、Node.js 22+。使用 `npx skills` 安装时，按其当前要求准备 Node.js 22.20+。本仓库包含完整程序，安装 skill 时会一并复制浏览器扩展、本地服务和安装脚本。[Skills CLI 官方安装说明](https://github.com/vercel-labs/skills/blob/main/docs/commands.md)
 
@@ -42,8 +56,10 @@ npx skills add https://github.com/nnnnompipo-glitch/job-greeting-builder- --skil
 
 1. 按安装脚本输出的路径，在 `chrome://extensions` 或 `edge://extensions` 加载 `extension` 文件夹。普通用户安装的未上架扩展需要这一次浏览器操作。
 2. 在扩展弹窗填入本机 `private/pairing.txt` 的配对码，打开“模型与个人资料设置”。
-3. 填写自己的专业、求职城市、真实经历和作品集依据，完成模型测试并保存。
-4. 开启前台岗位检测，刷新 BOSS 岗位详情页。核对生成的草稿，再自行复制和发送。
+3. 填写自己的专业、求职城市、真实经历和作品集依据；也可导入图片或PDF，核对识别结果后确认加入资料。选择语气，完成模型测试并保存。
+4. 开启前台岗位检测，刷新支持的平台岗位详情页。核对生成的草稿，再自行复制和发送。
+
+升级后在扩展管理页重新加载扩展并刷新岗位页，使新语气控件与站点权限生效。已保存的模型、个人资料、配对码和语气位于独立程序目录，会在升级时保留。
 
 模型 API Key 与个人资料保存在安装器输出的 `appRoot/private/`，默认位于 `%LOCALAPPDATA%/BOSS-Greeting-Helper/private/`；该目录不会随源码分发。浏览器扩展应加载安装器输出的 `extensionPath`，不要猜测 skill 目录中的旧副本。连接测试使用模拟文字，实际生成才使用岗位和个人资料。
 
@@ -74,7 +90,7 @@ skills/boss-greeting/
 导出后的仓库在 `skills/boss-greeting/assets/app` 内运行：
 
 ```powershell
-node --test tests/*.test.mjs extension/tests/extension.test.cjs
+node --test tests/*.test.mjs extension/tests/*.test.cjs
 ```
 
 独立浏览器界面测试使用隔离 Chrome 和模拟网页，不使用日常浏览器资料；脚本位于 `extension/tests/browser-qa.cjs` 和 `extension/tests/settings-qa.cjs`。GitHub Actions 在 Windows、Node.js 24 环境运行自动测试。

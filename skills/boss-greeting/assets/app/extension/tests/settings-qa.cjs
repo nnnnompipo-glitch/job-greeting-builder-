@@ -48,15 +48,16 @@ async function waitFor(expression) {
     await rpc('Network.setBlockedURLs',{urls:['http://*','https://*']});
     await rpc('Emulation.setDeviceMetricsOverride',{width:1100,height:1500,deviceScaleFactor:1,mobile:false});
     await rpc('Page.addScriptToEvaluateOnNewDocument',{source:`
-      globalThis.__qa={messages:[],saved:null,failLoad:false,data:{model:{provider:'codex',baseUrl:'',model:'',responseFormat:'auto',timeoutMs:120000,hasApiKey:false},profile:'<!-- PROFILE_NOT_CONFIGURED -->\\n请填写真实的专业、求职城市、项目经历和技能。',profileReady:false}};
+      globalThis.__qa={messages:[],saved:null,failLoad:false,data:{model:{provider:'codex',baseUrl:'',model:'',responseFormat:'auto',timeoutMs:120000,hasApiKey:false},preferences:{tone:'professional'},profile:'<!-- PROFILE_NOT_CONFIGURED -->\\n请填写真实的专业、求职城市、项目经历和技能。',profileReady:false}};
       globalThis.chrome={runtime:{sendMessage:async message=>{
         __qa.messages.push(message);
         if(message.action==='getModelSettings')return __qa.failLoad?{ok:false,error:'请先填写配对码。'}:{ok:true,data:__qa.data};
         if(message.action==='testModelSettings')return {ok:true,data:{ok:true,message:'模型连接成功。测试仅使用模拟请求。'}};
+        if(message.action==='importDocument')return {ok:true,data:{id:'import-fixture',status:'done',filename:message.filename,result:{text:'工业设计本科，参与测试用收纳产品外观、三维建模和打样。',characters:32,pageCount:1,method:'utf8-text',warnings:[]}}};
         if(message.action==='saveModelSettings'){
           __qa.saved=message;
           const model={...message.model,hasApiKey:Boolean(message.model.apiKey)};delete model.apiKey;
-          __qa.data={model,profile:message.profile,profileReady:!message.profile.includes('PROFILE_NOT_CONFIGURED')};
+          __qa.data={model,preferences:message.preferences,profile:message.profile,profileReady:!message.profile.includes('PROFILE_NOT_CONFIGURED')};
           return {ok:true,data:__qa.data};
         }
         throw new Error('Unexpected message '+message.action);
@@ -84,6 +85,34 @@ async function waitFor(expression) {
     await evaluate('document.getElementById("test-model").click()');
     await waitFor('document.getElementById("fields").disabled === false');
     assert.equal(await evaluate('"apiKey" in __qa.messages.filter(message=>message.action === "testModelSettings").at(-1).model'),false);
+    assert.equal(await evaluate('document.getElementById("tone").options.length'),4);
+    const professionalHelp=await evaluate('document.getElementById("tone-help").textContent');
+    await evaluate('document.getElementById("tone").value="bold";document.getElementById("tone").dispatchEvent(new Event("change"))');
+    assert.notEqual(await evaluate('document.getElementById("tone-help").textContent'),professionalHelp);
+    await evaluate('document.getElementById("settings-form").requestSubmit()');
+    await waitFor('__qa.saved.preferences.tone === "bold" && document.getElementById("fields").disabled === false');
+    assert.equal(await evaluate('document.getElementById("tone").value'),'bold');
+    await evaluate('__qa.data.profile="<!-- PROFILE_NOT_CONFIGURED -->\\n请填写真实的项目经历。";__qa.data.profileReady=false;document.getElementById("reload").click()');
+    await waitFor('document.getElementById("fields").disabled === false && document.getElementById("profile").value.includes("PROFILE_NOT_CONFIGURED")');
+    await evaluate('document.getElementById("profile").value+="\\n我未保存的真实输入：参与产品结构优化。"');
+    const importFixture=path.join(profile,'resume-import.txt');
+    fs.writeFileSync(importFixture,'工业设计本科，参与测试用收纳产品外观、三维建模和打样。','utf8');
+    const dom=await rpc('DOM.getDocument');
+    const fileNode=await rpc('DOM.querySelector',{nodeId:dom.root.nodeId,selector:'#documents'});
+    await rpc('DOM.setFileInputFiles',{nodeId:fileNode.nodeId,files:[importFixture]});
+    const priorProfile=await evaluate('document.getElementById("profile").value');
+    const priorSaves=await evaluate('__qa.messages.filter(message=>message.action === "saveModelSettings").length');
+    await evaluate('document.getElementById("import-files").click()');
+    await waitFor('document.getElementById("import-review").hidden === false');
+    assert.equal(await evaluate('document.getElementById("profile").value'),priorProfile);
+    assert.equal(await evaluate('__qa.messages.filter(message=>message.action === "saveModelSettings").length'),priorSaves);
+    assert.equal(await evaluate('__qa.messages.find(message=>message.action === "importDocument").base64.length > 0'),true);
+    await evaluate('document.getElementById("import-preview").value="本人确认的测试项目：厨房收纳产品外观与打样。";document.getElementById("append-import").click()');
+    assert.equal(await evaluate('document.getElementById("profile").value.includes("本人确认的测试项目")'),true);
+    assert.equal(await evaluate('document.getElementById("profile").value.includes("我未保存的真实输入")'),true);
+    assert.equal(await evaluate('__qa.messages.filter(message=>message.action === "saveModelSettings").length'),priorSaves);
+    await evaluate('document.getElementById("settings-form").requestSubmit()');
+    await waitFor('__qa.saved.profile.includes("本人确认的测试项目") && document.getElementById("fields").disabled === false');
     const screenshotPath=process.argv[2];
     if(screenshotPath) {
       const screenshot=await rpc('Page.captureScreenshot',{format:'png',captureBeyondViewport:true});
@@ -94,7 +123,7 @@ async function waitFor(expression) {
     await waitFor('document.getElementById("status").textContent.includes("配对码")');
     assert.equal(await evaluate('document.getElementById("fields").disabled'),true);
     assert.equal(await evaluate('document.getElementById("retry-load").hidden'),false);
-    console.log(JSON.stringify({ok:true,assertions:11,screenshot:screenshotPath||null}));
+    console.log(JSON.stringify({ok:true,assertions:19,checksAdded:['four distinct tone choices','tone preference persists','file selection and base64 upload','import preview does not replace profile','reviewed edit appended explicitly','import does not auto-save','confirmed text saved explicitly','preserves unsaved user facts when importing into a template'],screenshot:screenshotPath||null}));
   } finally {
     socket?.close();child.kill();await delay(500);
     const resolved=path.resolve(profile);

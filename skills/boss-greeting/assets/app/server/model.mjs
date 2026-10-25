@@ -51,7 +51,7 @@ export async function generateGreeting(job, profile, config) {
     child.once('close',code => resolve(code));
   });
   child.stdin.on('error',() => {});
-  child.stdin.end(buildPrompt(job,profile),'utf8');
+  child.stdin.end(buildPrompt(job,profile,config.preferences),'utf8');
   try {
     const code = await done;
     if (timedOut) throw publicError('Codex 生成超时，请检查网络后点击重新生成');

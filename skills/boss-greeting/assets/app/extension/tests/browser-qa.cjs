@@ -74,7 +74,7 @@ async function waitFor(expression, timeout = 6000) {
     await rpc('Page.navigate', { url: 'https://www.zhipin.com/job_detail/fixture.html' });
     await waitFor('document.readyState === "complete"');
     await evaluate(`(() => {
-      globalThis.__qa = { messages: [], listeners: [], pending: [], copied: [], state: { enabled: false, paired: true, active: true }, mode: 'instant' };
+      globalThis.__qa = { messages: [], listeners: [], pending: [], copied: [], stateReads: [], state: { enabled: false, paired: true, active: true, tone: 'professional' }, mode: 'instant' };
       const original = Element.prototype.attachShadow;
       Element.prototype.attachShadow = function(options) { const shadow = original.call(this, options); if (this.id === 'boss-local-greeting-helper') __qa.shadow = shadow; return shadow; };
       Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async value => { __qa.copied.push(value); } } });
@@ -82,7 +82,17 @@ async function waitFor(expression, timeout = 6000) {
         onMessage: { addListener: listener => __qa.listeners.push(listener) },
         sendMessage: async message => {
           __qa.messages.push(message);
-          if (message.action === 'getState') return { ok: true, data: { ...__qa.state } };
+          if (message.action === 'getState') {
+            const snapshot={...__qa.state};
+            if(__qa.deferState) return new Promise(resolve=>__qa.stateReads.push(()=>resolve({ok:true,data:snapshot})));
+            return { ok: true, data: snapshot };
+          }
+          if (message.action === 'setTone') {
+            if (!__qa.state.active || !__qa.state.paired) return {ok:false,code:'inactive',error:'请先回到当前岗位标签页切换语气。'};
+            __qa.state.tone=message.tone;
+            __qa.listeners.forEach(listener=>listener({action:'settingsChanged'}));
+            return {ok:true,data:{tone:message.tone}};
+          }
           if (message.action === 'setMonitoring') {
             if (!__qa.state.active) return { ok: false, code: 'inactive', error: '请先回到当前岗位标签页，再切换检测状态。' };
             if (message.enabled && !__qa.state.paired) return { ok: false, error: '请先填写配对码。' };
@@ -100,6 +110,7 @@ async function waitFor(expression, timeout = 6000) {
         }
       } };
     })()`);
+    await evaluate(fs.readFileSync(path.join(extension, 'platforms.cjs'), 'utf8'));
     await evaluate(fs.readFileSync(path.join(extension, 'extract.js'), 'utf8'));
     await evaluate(fs.readFileSync(path.join(extension, 'content.js'), 'utf8'));
     await waitFor('__qa.shadow?.getElementById("status").textContent.includes("检测已暂停")');
@@ -165,13 +176,48 @@ async function waitFor(expression, timeout = 6000) {
     await waitFor('!__qa.shadow.getElementById("toggle").disabled');
     await evaluate('__qa.shadow.getElementById("toggle").click()');
     await waitFor('__qa.shadow.querySelector("textarea").value.includes("工业设计师 D")');
+    assert.equal(await evaluate('__qa.shadow.getElementById("tone").options.length'),4);
+    // Changing tone must revoke a response created under the previous tone.
+    await evaluate('__qa.mode="defer";document.querySelector("h1").textContent="工业设计师 E"');
+    await waitFor('__qa.pending.length===3');
+    await evaluate('__qa.shadow.getElementById("tone").value="creative";__qa.shadow.getElementById("tone").dispatchEvent(new Event("change"))');
+    await waitFor('__qa.state.tone==="creative"');
+    await evaluate('__qa.pending[2].resolve({ok:true,data:{id:"old-tone",status:"done",result:{greeting:"旧语气结果不应出现",matches:[],cautions:[]}}})');
+    await delay(120);
+    assert.equal(await evaluate('__qa.shadow.querySelector("textarea").value.includes("旧语气")'),false);
+    await waitFor('__qa.pending.length===4');
+    await evaluate('__qa.pending[3].resolve({ok:true,data:{id:"new-tone",status:"done",result:{greeting:"您好，希望把草图里的想法带到真实产品中，结合工业设计师 E 岗位进一步沟通。",matches:[],cautions:[]}}})');
+    await waitFor('__qa.shadow.querySelector("textarea").value.includes("草图")');
+    assert.equal(await evaluate('__qa.shadow.getElementById("tone").value'),'creative');
+    assert.equal(await evaluate('__qa.shadow.getElementById("tone-hint").textContent.includes("简短巧思")'),true);
+    await evaluate('__qa.mode="instant";__qa.deferState=true;window.dispatchEvent(new Event("focus"))');
+    await waitFor('__qa.stateReads.length===1');
+    await evaluate('__qa.shadow.getElementById("tone").value="bold";__qa.shadow.getElementById("tone").dispatchEvent(new Event("change"))');
+    await waitFor('__qa.state.tone==="bold"');
+    await evaluate('__qa.deferState=false;__qa.stateReads[0]()');
+    await delay(30);
+    assert.equal(await evaluate('__qa.shadow.getElementById("tone").value'),'bold','A stale getState must not revert a newly selected tone.');
+    await waitFor('__qa.shadow.querySelector("textarea").value.includes("工业设计师 E")');
+    const platformFixtures=await evaluate(`(() => {
+      const fixture=document.createElement('div');document.body.append(fixture);
+      const scoped={querySelectorAll:selector=>fixture.querySelectorAll(selector)};
+      fixture.innerHTML='<section class="job-apply-container"><div class="name-box"><span class="name">猎聘测试设计师</span></div><div class="job-properties">杭州 本科</div></section><section class="job-apply-container-desc"><section class="job-intro-container"><dd data-selector="job-intro-content">负责产品外观设计、三维建模、用户调研、手板验证，并与结构工程师共同推进产品量产。</dd></section></section><div class="company-info-container"><div class="company-card"><div class="content"><div class="name">猎聘测试公司</div></div></div></div><aside class="job-list">其他推荐岗位内容不应读取</aside>';
+      const liepin=RecruitmentJobExtractor.extract(scoped,'https://www.liepin.com/job/1986231537.shtml');
+      fixture.innerHTML='<main class="main-jobs"><div class="job-summary"><h1 class="summary-planes__title">智联测试设计师</h1></div><div class="describtion-card__detail-content">负责工业产品外观、建模和渲染，进行需求分析和工厂打样，协同结构开发完成设计落地。</div><div class="company-info__name">智联测试公司</div><aside class="jobs-deliver">相似岗位列表不应读取</aside></main>';
+      const zhilian=RecruitmentJobExtractor.extract(scoped,'https://www.zhaopin.com/jobdetail/CC123456J123456.htm');
+      fixture.querySelector('.describtion-card__detail-content').classList.add('describtion-card__detail-content--guest-clamp');
+      const clamped=RecruitmentJobExtractor.extract(scoped,'https://www.zhaopin.com/jobdetail/CC123456J123456.htm');
+      fixture.remove();return {liepin,zhilian,clamped};
+    })()`);
+    assert.equal(platformFixtures.liepin.platform,'liepin');assert.equal(platformFixtures.liepin.company,'猎聘测试公司');
+    assert.equal(platformFixtures.zhilian.platform,'zhilian');assert.equal(platformFixtures.zhilian.company,'智联测试公司');assert.equal(platformFixtures.clamped,null);
     const screenshotPath = process.argv[2];
     if (screenshotPath) {
       const screenshot = await rpc('Page.captureScreenshot', { format: 'png' });
       fs.mkdirSync(path.dirname(path.resolve(screenshotPath)), { recursive: true });
       fs.writeFileSync(screenshotPath, Buffer.from(screenshot.data, 'base64'));
     }
-    console.log(JSON.stringify({ ok: true, assertions: ['paired paused state shows enable button without submitting', 'page enable button starts generation', 'page pause button clears output and stops submission', 'page enable can resume again', 'unpaired page hides enable button', 'inactive page cannot enable or submit', 'scoped extraction', 'one submission per unchanged job', 'no implicit clipboard write', 'editable explicit copy', 'collapse', 'clears on job switch', 'blocks stale result before debounce', 'pause revokes pending result', 'recommendation route', 'processed route not resubmitted by navigation interval', 'failed job does not auto-retry after clock advance', 'explicit retry resumes generation'], externalRequestsBlocked: blocked.length, screenshot: screenshotPath || null }));
+    console.log(JSON.stringify({ ok: true, assertions: ['paired paused state shows enable button without submitting', 'page enable button starts generation', 'page pause button clears output and stops submission', 'page enable can resume again', 'unpaired page hides enable button', 'inactive page cannot enable or submit', 'scoped extraction', 'one submission per unchanged job', 'no implicit clipboard write', 'editable explicit copy', 'collapse', 'clears on job switch', 'blocks stale result before debounce', 'pause revokes pending result', 'recommendation route', 'processed route not resubmitted by navigation interval', 'failed job does not auto-retry after clock advance', 'explicit retry resumes generation','four tones only','changing tone blocks old-tone response','tone hint matches current selection','late getState cannot revert tone selection','Liepin scoped DOM extraction','Zhilian scoped DOM extraction','guest-clamped description not read'], externalRequestsBlocked: blocked.length, screenshot: screenshotPath || null }));
   } finally {
     socket?.close();
     processHandle.kill();
