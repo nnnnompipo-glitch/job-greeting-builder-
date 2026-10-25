@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, rm, realpath, symlink } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { EventEmitter } from 'node:events';
@@ -9,7 +9,7 @@ import { findCodex, checkCodexLogin } from '../scripts/codex.mjs';
 
 async function fixture(callback) {
   const root=await mkdtemp(path.join(os.tmpdir(),'job-helper-codex-test-'));
-  const file=async relative=>{const filename=path.join(root,relative);await mkdir(path.dirname(filename),{recursive:true});await writeFile(filename,'fixture executable');return filename;};
+  const file=async relative=>{const filename=path.join(root,relative);await mkdir(path.dirname(filename),{recursive:true});await writeFile(filename,'fixture executable');return realpath(filename);};
   try{return await callback({root,file});}finally{
     assert.ok(path.resolve(root).startsWith(path.resolve(os.tmpdir())+path.sep)&&path.basename(root).startsWith('job-helper-codex-test-'));
     await rm(root,{recursive:true,force:true});
@@ -38,6 +38,13 @@ test('Codex discovery resolves desktop and npm native binaries rather than cmd w
 test('Codex discovery finds a new standalone Windows install before PATH refresh',async()=>fixture(async({root,file})=>{
   const standalone=await file('local/Programs/OpenAI/Codex/bin/codex.exe');
   assert.equal(await findCodex({env:{LOCALAPPDATA:path.join(root,'local'),PATH:''},platform:'win32'}),standalone);
+}));
+
+test('Codex discovery returns the canonical executable through a directory alias',async()=>fixture(async({root,file})=>{
+  const native=await file('real-install/codex.exe');
+  const alias=path.join(root,'install alias');
+  await symlink(path.dirname(native),alias,process.platform==='win32'?'junction':'dir');
+  assert.equal(await findCodex({codexPath:path.join(alias,'codex.exe'),env:{},platform:'win32'}),native);
 }));
 
 function fakeSpawn({output='',code=0,neverExit=false,error,lateOutput=false}={}) {
