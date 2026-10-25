@@ -73,6 +73,16 @@ function background({ active = true, focused = true, enabled = true, tabUrl='htt
     fetch: async (url, options) => {
       requests.push({ url, options });
       if (config.revokeDuringRequest) config.enabled = false;
+      if (options.method === 'PUT' && config.deferToneWrite &&
+          (url.endsWith('/api/preferences') || url.endsWith('/api/settings'))) {
+        const body=JSON.parse(options.body);
+        const tone=url.endsWith('/api/preferences') ? body.tone : body.preferences.tone;
+        const result=url.endsWith('/api/preferences') ? {tone} : response;
+        return new Promise(resolve=>{config.releaseToneWrite=()=>{
+          config.tone=tone;
+          resolve({ok:true,json:async()=>result});
+        };});
+      }
       if (url.endsWith('/api/preferences')) {
         if (options.method === 'GET' && config.deferPreferences) {
           const snapshot={tone:config.tone || 'professional'};
@@ -337,6 +347,28 @@ test('late preference reads cannot overwrite a newer tone save',async()=>{
     assert.equal(changed.ok,true);
     runner.config.deferPreferences=false;runner.config.releasePreferences();
     assert.equal((await oldState).data.tone,'creative');
+    assert.equal((await runner.send({action:'getState'})).data.tone,'creative');
+  }
+});
+
+test('preference reads begun during a pending tone save cannot overwrite its result',async()=>{
+  for(const method of ['setTone','saveModelSettings']) {
+    const runner=background({response:{model:{provider:'codex'},preferences:{tone:'creative'}}});
+    runner.config.deferToneWrite=true;
+    const saving=method==='setTone'
+      ? runner.send({action:'setTone',tone:'creative'})
+      : runner.send({action:'saveModelSettings',model:{provider:'codex'},preferences:{tone:'creative'}},{tab:{id:2},frameId:0,url:'chrome-extension://test/settings.html'});
+    await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(typeof runner.config.releaseToneWrite,'function');
+    runner.config.deferPreferences=true;
+    const stateDuringSave=runner.send({action:'getState'});
+    await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(typeof runner.config.releasePreferences,'function');
+    runner.config.releaseToneWrite();
+    assert.equal((await saving).ok,true);
+    runner.config.deferPreferences=false;
+    runner.config.releasePreferences();
+    assert.equal((await stateDuringSave).data.tone,'creative');
     assert.equal((await runner.send({action:'getState'})).data.tone,'creative');
   }
 });

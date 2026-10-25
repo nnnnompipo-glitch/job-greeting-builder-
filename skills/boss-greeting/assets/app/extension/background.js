@@ -144,7 +144,11 @@ async function handle(message, sender) {
         body.profile = message.profile;
       }
       const result = publicSettings(await request('/api/settings',config,'PUT',body));
-      if (revision === preferenceRevision && config.token === preferenceToken) preferenceCache={tone:result.preferences.tone,token:config.token,expires:Date.now()+30000};
+      if (revision === preferenceRevision && config.token === preferenceToken) {
+        // Revoke reads begun during this write, as well as reads begun before it.
+        preferenceRevision++;
+        preferenceCache={tone:result.preferences.tone,token:config.token,expires:Date.now()+30000};
+      }
       await notifySettings().catch(() => {});
       return result;
     }
@@ -177,7 +181,10 @@ async function handle(message, sender) {
     const revision=++preferenceRevision;
     preferenceCache.expires=0;
     const saved=cleanPreferences(await request('/api/preferences',config,'PUT',tone));
-    if (revision === preferenceRevision && config.token === preferenceToken) preferenceCache={...saved,token:config.token,expires:Date.now()+30000};
+    if (revision === preferenceRevision && config.token === preferenceToken) {
+      preferenceRevision++;
+      preferenceCache={...saved,token:config.token,expires:Date.now()+30000};
+    }
     await notifySettings().catch(()=>{});
     return saved;
   }
