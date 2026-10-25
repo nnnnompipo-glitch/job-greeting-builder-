@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,mkdir,writeFile,readFile,access,rm} from 'node:fs/promises';
+import {mkdtemp,mkdir,writeFile,readFile,access,rm,realpath} from 'node:fs/promises';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
@@ -10,7 +10,7 @@ const stopScript=fileURLToPath(new URL('../scripts/stop.ps1',import.meta.url));
 const quote=value=>"'"+String(value).replaceAll("'","''")+"'";
 async function fixture(run) {
   const directory=await mkdtemp(path.join(os.tmpdir(),'boss-stop-recovery-'));
-  const root=path.join(directory,'Helper With Spaces');
+  const root=path.join(await realpath(directory),'Helper With Spaces');
   await mkdir(path.join(root,'private/imports'),{recursive:true});
   try {return await run({root,entry:path.join(root,'server/index.mjs'),pidFile:path.join(root,'private/server.pid')});}
   finally {
