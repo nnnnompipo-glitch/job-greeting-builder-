@@ -14,10 +14,12 @@
     let url;
     try {url = new URL(value);} catch {return null;}
     if (url.protocol !== 'https:' || url.username || url.password || url.port) return null;
-    const pathname = url.pathname;
+    // BOSS job identifiers can contain '~', including its escaped URL form.
+    // Decode only this unreserved character; encoded separators stay rejected.
+    const pathname = url.hostname === 'www.zhipin.com' ? url.pathname.replace(/%7e/gi, '~') : url.pathname;
     let id = '', canonicalUrl = url.origin + pathname;
     if (url.hostname === 'www.zhipin.com' &&
-      (/^\/job_detail\/[\w-]+\.html$/.test(pathname) || /^\/web\/geek\/(?:job|job-recommend)\/?$/.test(pathname))) id = 'boss';
+      (/^\/job_detail\/[\w~-]+\.html$/.test(pathname) || /^\/web\/geek\/(?:job|job-recommend)\/?$/.test(pathname))) id = 'boss';
     else if (url.hostname === 'www.liepin.com' && /^\/(?:job|a)\/\d{5,30}\.shtml$/.test(pathname)) id = 'liepin';
     else if (url.hostname === 'www.zhaopin.com' && /^\/jobdetail\/[a-z0-9_-]{6,100}\.html?$/i.test(pathname)) id = 'zhilian';
     else if (url.hostname === 'jobs.zhaopin.com' && /^\/[a-z0-9_-]{6,100}\.html?$/i.test(pathname)) {

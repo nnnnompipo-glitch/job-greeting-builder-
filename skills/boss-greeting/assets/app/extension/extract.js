@@ -29,8 +29,10 @@
     const jobLink = root.querySelector('a[href*="/job_detail/"]');
     let jobUrl = url;
     if (!detailPage && jobLink) {
-      const candidate = new URL(jobLink.getAttribute('href'), url);
-      if (candidate.origin === 'https://www.zhipin.com' && /^\/job_detail\/[\w-]+\.html$/.test(candidate.pathname)) jobUrl = candidate.origin + candidate.pathname;
+      try {
+        const candidate = registry.identifyJobURL(new URL(jobLink.getAttribute('href'), url).href);
+        if (candidate?.id === 'boss' && new URL(candidate.canonicalUrl).pathname.startsWith('/job_detail/')) jobUrl = candidate.canonicalUrl;
+      } catch { /* Ignore an invalid detail link; keep the verified current route. */ }
     }
     return {
       url: jobUrl,
@@ -41,10 +43,10 @@
       requirements: first(root, ['.job-limit', '.job-require', '.job-primary .info-primary p'], 1000)
     };
   }
-  function boss(doc, address) {
-    const detailPage = /^\/job_detail\/[\w-]+\.html$/.test(address.pathname);
-    const searchPage = /^\/web\/geek\/(?:job|job-recommend)\/?$/.test(address.pathname);
-    if (!detailPage && !searchPage) return null;
+  function boss(doc, identified) {
+    // The shared registry already verified this BOSS route. Reuse its canonical
+    // path so detail extraction cannot drift from panel and server validation.
+    const detailPage = new URL(identified.canonicalUrl).pathname.startsWith('/job_detail/');
     // On search pages a modal must contain its own title and full description.
     const roots = detailPage
       ? ['.job-detail-box', '.job-detail-container', '.job-detail', '#main']
@@ -52,7 +54,7 @@
     for (const selector of roots) {
       for (const root of doc.querySelectorAll(selector)) {
         if (root.closest('.job-list-box,.job-list,.chat-conversation,.chat-record')) continue;
-        const result = collect(root, address.origin + address.pathname, detailPage);
+        const result = collect(root, identified.canonicalUrl, detailPage);
         if (result) return result;
       }
     }
@@ -97,7 +99,7 @@
     const identified = registry?.identifyJobURL(url);
     if (!identified) return null;
     let result;
-    if (identified.id === 'boss') result = boss(doc,new URL(url));
+    if (identified.id === 'boss') result = boss(doc,identified);
     else if (identified.id === 'liepin') result = liepin(doc,identified);
     else if (identified.id === 'zhilian') result = zhilian(doc,identified);
     return result ? {...result, platform:identified.id,platformLabel:identified.label} : null;

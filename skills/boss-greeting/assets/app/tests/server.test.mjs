@@ -23,6 +23,22 @@ test('only scoped BOSS job routes and bounded text accepted',() => {
   assert.throws(() => validateJob({...job,description:'empty'}));
   assert.throws(() => validateJob({...job,description:'x'.repeat(18001)}));
 });
+test('server accepts tilde job IDs, canonicalizes escaped tildes and deduplicates their jobs',async()=>{
+  const canonical='https://www.zhipin.com/job_detail/fixture~.html';
+  const queue=new JobQueue({loadProfile:async()=>profile,generate:async()=>result,minIntervalMs:0});
+  try{
+    const first=await queue.submit({...job,url:canonical+'?securityId=fixture'});
+    await finish(queue,first.id);
+    for(const suffix of ['~','%7E','%7e']){
+      const value={...job,url:`https://www.zhipin.com/job_detail/fixture${suffix}.html?securityId=fixture#detail`};
+      assert.equal(validateJob(value).url,canonical);
+      assert.equal((await queue.submit(value)).id,first.id);
+    }
+    for(const pathname of ['/job_detail/fixture%2F~.html','/job_detail/fixture%257e.html','/job_detail/fixture~.html/chat']){
+      assert.throws(()=>validateJob({...job,url:'https://www.zhipin.com'+pathname}));
+    }
+  }finally{queue.close();}
+});
 
 test('dedupes by job and current candidate facts, and validates model output',async () => {
   let calls = 0, facts = profile;

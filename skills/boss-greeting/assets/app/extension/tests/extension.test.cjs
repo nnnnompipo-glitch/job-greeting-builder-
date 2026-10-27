@@ -144,6 +144,16 @@ test('revoking monitoring while localhost responds blocks the response', async (
   assert.equal(result.ok, false);
   assert.equal(result.code, 'inactive');
 });
+test('background accepts BOSS tilde details and strips transient URL parameters before submission',async()=>{
+  for(const suffix of ['~','%7E','%7e']){
+    const url=`https://www.zhipin.com/job_detail/fixture${suffix}.html?securityId=fixture`;
+    const runner=background({tabUrl:url});
+    const result=await runner.send({action:'observeJob',job:{...job,url}}, {tab:{id:1},frameId:0,url});
+    assert.equal(result.ok,true);
+    const request=runner.requests.find(item=>item.url.endsWith('/api/jobs'));
+    assert.equal(JSON.parse(request.options.body).url,'https://www.zhipin.com/job_detail/fixture~.html');
+  }
+});
 
 test('supports recommendation detail modals and rejects extra route suffixes', async () => {
   const fields = { '.job-name': [element('工业设计师')], '.job-sec-text': [element('负责产品外观设计和三维建模，参与用户研究、产品打样及设计方案落地。')] };

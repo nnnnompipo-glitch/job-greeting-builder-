@@ -48,6 +48,41 @@ test('Liepin standalone combines only unique visible explicit header and introdu
   assert.equal(extractor()(element('',{'.job-apply-container':[header,header],'.job-apply-container-desc .job-intro-container':[detail]}),'https://www.liepin.com/job/1986231537.shtml'),null);
   assert.equal(extractor()(element('',{'.job-apply-container':[header],'.job-apply-container-desc .job-intro-container':[element('',{'[data-selector="job-intro-content"]':[element(description)]},{hidden:true})]}),'https://www.liepin.com/job/1986231537.shtml'),null);
 });
+test('BOSS tilde identifiers and escaped tildes share one canonical URL without broadening routes',()=>{
+  const canonical='https://www.zhipin.com/job_detail/fixture~.html';
+  for(const suffix of ['~','%7E','%7e']){
+    const value=registry.identifyJobURL(`https://www.zhipin.com/job_detail/fixture${suffix}.html?securityId=fixture#detail`);
+    assert.equal(value?.id,'boss');assert.equal(value.canonicalUrl,canonical);
+  }
+  for(const pathname of ['/job_detail/fixture%2F~.html','/job_detail/fixture%5C~.html',
+    '/job_detail/fixture%257E.html','/job_detail/fixture~.html/chat','/job_detail/fixture%.html',
+    '/web/geek/chat','/job_detail/fixture~.html%2Fchat']){
+    assert.equal(registry.identifyJobURL('https://www.zhipin.com'+pathname),null);
+  }
+});
+test('BOSS standalone extraction accepts literal and escaped tilde details',()=>{
+  const root=element('',{'h1':[element('工业设计师')],'.job-sec-text':[element(description)]});
+  const doc=element('不能读取的聊天与推荐内容',{'#main':[root]});
+  for(const suffix of ['~','%7E','%7e']){
+    const job=extractor()(doc,`https://www.zhipin.com/job_detail/fixture${suffix}.html?securityId=fixture`);
+    assert.equal(job?.title,'工业设计师');assert.equal(job?.description,description);
+    assert.equal(job.url,'https://www.zhipin.com/job_detail/fixture~.html');
+  }
+});
+test('BOSS recommendation details resolve tilde links through the shared registry',()=>{
+  const route='https://www.zhipin.com/web/geek/job-recommend';
+  for(const href of ['/job_detail/fixture~.html?securityId=fixture','/job_detail/fixture%7e.html']){
+    const root=element('',{'.job-title':[element('工业设计师')],'.job-sec-text':[element(description)],
+      'a[href*="/job_detail/"]':[{getAttribute:()=>href}]});
+    const job=extractor()(element('',{'[role="dialog"]':[root]}),route);
+    assert.equal(job?.url,'https://www.zhipin.com/job_detail/fixture~.html');
+  }
+  for(const href of ['https://evil.test/job_detail/fixture~.html','/job_detail/fixture~.html/chat','http://[bad/job_detail/']){
+    const root=element('',{'.job-title':[element('工业设计师')],'.job-sec-text':[element(description)],
+      'a[href*="/job_detail/"]':[{getAttribute:()=>href}]});
+    assert.equal(extractor()(element('',{'[role="dialog"]':[root]}),route)?.url,route);
+  }
+});
 test('Zhilian extracts current description without neighboring recommendations and declines guest-clamped text',()=>{
   const fields={'.summary-planes__title':[element('工业设计工程师')],'.describtion-card__detail-content':[element(description)],'.company-info__name':[element('示例智联企业')]};
   const doc=element('推荐岗位不能采集',{'.main-jobs':[element('',fields)]});

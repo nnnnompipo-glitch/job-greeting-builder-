@@ -51,6 +51,8 @@ async function launch(extension,profile,token,first){
   const navigationPanels=async()=>{
     const fixtures=[
       ['https://www.zhipin.com/web/geek/index','/job_detail/fixture.html','/web/geek/chat'],
+      ['https://www.zhipin.com/web/geek/index','/job_detail/fixture~.html?securityId=fixture','/web/geek/chat'],
+      ['https://www.zhipin.com/web/geek/index','/job_detail/fixture%7E.html','/web/geek/chat'],
       ['https://www.liepin.com/','/job/1986231537.shtml','/zhaopin/'],
       ['https://www.zhaopin.com/','/jobdetail/CC123456J123456.htm','/chat']
     ];
@@ -80,11 +82,15 @@ async function launch(extension,profile,token,first){
         await evaluate(sessionId,'history.back()');
         await deadline(()=>evaluate(sessionId,`Boolean(${panel})`),'Panel missing after browser back');
         assert.equal(await evaluate(sessionId,'document.querySelectorAll("#boss-local-greeting-helper").length'),1,'Duplicate panels');
+        await evaluate(sessionId,'globalThis.__beforeDirectNavigation=true');
+        await rpc('Page.navigate',{url:new URL(detail,start).href},sessionId);
+        await deadline(()=>evaluate(sessionId,'!globalThis.__beforeDirectNavigation && document.readyState==="complete"'),'Direct navigation did not replace the old document');
+        await deadline(()=>evaluate(sessionId,`Boolean(${panel}?.getBoundingClientRect().width)`),'Panel missing on direct detail navigation');
       }finally{
         events.delete(`${sessionId}:Fetch.requestPaused`);await rpc('Target.closeTarget',{targetId});
       }
     }
-    return {platforms:fixtures.length,spaEntry:true,removedPanelRecovery:true,nonJobTeardown:true,browserBack:true};
+    return {platforms:3,routeCases:fixtures.length,bossTildeRoutes:true,directEntry:true,spaEntry:true,removedPanelRecovery:true,nonJobTeardown:true,browserBack:true};
   };
   const openPopup=async()=>{
     const tabs=(await rpc('Target.getTargets',{filter:[{type:'tab'}]})).targetInfos;
