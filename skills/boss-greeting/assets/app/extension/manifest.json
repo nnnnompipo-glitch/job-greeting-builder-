@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "求职招呼语助手（手动发送）",
-  "version": "1.4.1",
+  "version": "1.5.0",
   "minimum_chrome_version": "103",
   "description": "检测 BOSS、猎聘、智联当前岗位，结合个人资料和所选语气生成草稿，由你手动发送。",
   "permissions": ["storage"],
